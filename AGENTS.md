@@ -1,8 +1,16 @@
 # K Agent Framework
 
-## Quick commands (use uv)
+## Quick commands (use just)
 
-- `uv sync` (sync deps for all workspace packages)
+- `just sync` (sync deps for all workspace packages)
+- `just format` / `just check`
+- `just test`
+- `just build`
+- `just format-pkg kai` / `just check-pkg kai` / `just test-pkg kai` (per-package)
+- `just clean`
+
+Or run tools directly with `uv run`:
+
 - `uv run ruff check` / `uv run ruff format`
 - `uv run pyright`
 - `uv run pytest`
