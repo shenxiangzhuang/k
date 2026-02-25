@@ -11,6 +11,13 @@ dependencies = [
     "kai",
 ]
 
+[project.optional-dependencies]
+otel = [
+    "opentelemetry-api>=1.39.1",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.39.1",
+    "opentelemetry-sdk>=1.39.1",
+]
+
 [dependency-groups]
 dev = [
     "pyright>=1.1.407",

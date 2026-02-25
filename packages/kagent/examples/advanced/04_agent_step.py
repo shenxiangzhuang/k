@@ -13,8 +13,8 @@ until the model stops requesting tools — to show exactly what happens at each
 step and why a loop is required.
 
 Run:
-    export DEEPSEEK_API_KEY=sk-...
-    uv run python examples/04_advanced_agent_step.py
+    export MINIMAX_API_KEY=...
+    uv run python examples/advanced/04_agent_step.py
 """
 
 import asyncio
@@ -31,10 +31,15 @@ from kagent.event import AgentError, StreamChunk, ToolExecEnd, ToolExecStart, Tu
 def make_provider() -> Anthropic:
     # return Anthropic(model="claude-sonnet-4-20250514")
     # return OpenAICompletions(model="gpt-4o")
+    # return Anthropic(
+    #     model="deepseek-chat",
+    #     api_key=os.environ.get("DEEPSEEK_API_KEY"),
+    #     base_url="https://api.deepseek.com/anthropic",
+    # )
     return Anthropic(
-        model="deepseek-chat",
-        api_key=os.environ.get("DEEPSEEK_API_KEY"),
-        base_url="https://api.deepseek.com/anthropic",
+        model="MiniMax-M2.5",
+        api_key=os.environ.get("MINIMAX_API_KEY"),
+        base_url="https://api.minimaxi.com/anthropic",
     )
 
 

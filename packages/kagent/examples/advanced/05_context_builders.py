@@ -8,8 +8,8 @@ Demonstrates the built-in ContextBuilder implementations:
 4. AdaptiveBuilder      — let the agent switch strategies at runtime
 
 Run:
-    export DEEPSEEK_API_KEY=sk-...
-    uv run python examples/05_context_builders.py
+    export MINIMAX_API_KEY=...
+    uv run python examples/advanced/05_context_builders.py
 """
 
 import asyncio
@@ -28,10 +28,15 @@ from kagent import (
 
 
 def make_provider() -> Anthropic:
+    # return Anthropic(
+    #     model="deepseek-chat",
+    #     api_key=os.environ.get("DEEPSEEK_API_KEY"),
+    #     base_url="https://api.deepseek.com/anthropic",
+    # )
     return Anthropic(
-        model="deepseek-chat",
-        api_key=os.environ.get("DEEPSEEK_API_KEY"),
-        base_url="https://api.deepseek.com/anthropic",
+        model="MiniMax-M2.5",
+        api_key=os.environ.get("MINIMAX_API_KEY"),
+        base_url="https://api.minimaxi.com/anthropic",
     )
 
 

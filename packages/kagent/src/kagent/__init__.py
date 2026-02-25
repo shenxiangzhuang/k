@@ -15,6 +15,8 @@ Example::
     print(msg.extract_text())
 """
 
+import logging as _logging
+
 # Level 2: Stateful agent SDK
 # Tools (re-exported from kai for convenience)
 from kai import Tool, ToolResult
@@ -44,6 +46,9 @@ from kagent.event import (
     TurnEnd,
     TurnStart,
 )
+
+# Hooks (observability)
+from kagent.hooks import Hooks, LoggingHooks, MultiHooks
 
 # Level 1: Multi-turn loop
 from kagent.loop import (
@@ -97,6 +102,10 @@ __all__ = [
     "StreamChunk",
     "ToolExecStart",
     "ToolExecEnd",
+    # Hooks
+    "Hooks",
+    "LoggingHooks",
+    "MultiHooks",
     # Callback types
     "OnToolResultFn",
     "ShouldContinueFn",
@@ -110,3 +119,5 @@ __all__ = [
     "InMemoryTraceStore",
     "JsonlTraceStore",
 ]
+
+_logging.getLogger("kagent").addHandler(_logging.NullHandler())

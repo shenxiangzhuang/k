@@ -8,12 +8,14 @@ control (steering, follow-up, abort), and dual consumption modes
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import AsyncIterator
 
 from kai import Message, Provider, Tool
 
 from kagent.context import ContextBuilder
-from kagent.event import AgentAbort, AgentEnd, AgentEvent, TurnEnd
+from kagent.event import AgentAbort, AgentEnd, AgentError, AgentEvent, TurnEnd
+from kagent.hooks import Hooks
 from kagent.loop import (
     ShouldContinueFn,
     agent_loop,
@@ -22,6 +24,8 @@ from kagent.state import AgentState
 from kagent.step import OnToolResultFn
 from kagent.trace.entry import TraceEntry
 from kagent.trace.trace import Trace
+
+_log = logging.getLogger("kagent.agent")
 
 
 class Agent:
@@ -63,6 +67,7 @@ class Agent:
         context_builder: ContextBuilder | None = None,
         on_tool_result: OnToolResultFn | None = None,
         should_continue: ShouldContinueFn | None = None,
+        hooks: Hooks | None = None,
         max_turns: int = 100,
     ) -> None:
         """Create an Agent.
@@ -71,11 +76,13 @@ class Agent:
         are used. These are the same callbacks as ``agent_loop()`` — no wrapper types.
 
         Pass an existing ``trace`` to resume a previous session.
+        Pass ``hooks`` for observability (logging, tracing, metrics).
         """
         self._provider = provider
         self._context_builder = context_builder
         self._on_tool_result = on_tool_result
         self._should_continue = should_continue
+        self._hooks = hooks
         self._max_turns = max_turns
         self._state = AgentState(
             system=system,
@@ -106,6 +113,7 @@ class Agent:
 
         Records a user message in the trace, then runs the loop.
         """
+        _log.info("Agent.run called with %d chars of input", len(user_input))
         msg = Message(role="user", content=user_input)
         self._state.trace.append(TraceEntry.user(msg))
         async for event in self._run_loop():
@@ -121,11 +129,16 @@ class Agent:
             RuntimeError: If the loop ends without producing an assistant message.
         """
         last_assistant: Message | None = None
+        last_error: BaseException | None = None
         async for event in self.run(user_input):
             if isinstance(event, TurnEnd):
                 last_assistant = event.message
+            elif isinstance(event, AgentError):
+                last_error = event.error
 
         if last_assistant is None:
+            if last_error is not None:
+                raise RuntimeError(f"Agent loop failed: {last_error}") from last_error
             raise RuntimeError("Agent loop ended without producing an assistant message")
         return last_assistant
 
@@ -172,6 +185,7 @@ class Agent:
                     context_builder=self._context_builder,
                     on_tool_result=self._on_tool_result,
                     should_continue=self._wrap_should_continue(),
+                    hooks=self._hooks,
                     max_turns=self._max_turns,
                 ):
                     if self._abort_event.is_set():

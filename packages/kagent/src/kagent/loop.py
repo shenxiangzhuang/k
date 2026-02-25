@@ -1,18 +1,21 @@
 """Level 1: Multi-turn agent loop.
 
-``agent_loop()`` wraps ``agent_step()`` with automatic trace management
-and loop control.  Each turn's assistant message and tool results are
-recorded as ``TraceEntry`` objects in ``state.trace``.
+``agent_loop()`` wraps ``agent_step()`` with automatic trace management,
+loop control, and lifecycle hooks.  Each turn's assistant message and tool
+results are recorded as ``TraceEntry`` objects in ``state.trace``.
 
-Callbacks are **plain kwargs** — no Hooks class, no Middleware base class.
+Hooks (optional) are called at each lifecycle point for observability.
 """
 
 from __future__ import annotations
 
+import logging
+import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from uuid import uuid4
 
 from kai import Message, Provider
+from kai.usage import TokenUsage
 
 from kagent.context import ContextBuilder, DefaultBuilder
 from kagent.event import (
@@ -20,11 +23,17 @@ from kagent.event import (
     AgentError,
     AgentEvent,
     AgentStart,
+    ToolExecEnd,
+    ToolExecStart,
     TurnEnd,
+    TurnStart,
 )
+from kagent.hooks import Hooks
 from kagent.state import AgentState
 from kagent.step import OnToolResultFn, agent_step
 from kagent.trace.entry import TraceEntry
+
+_log = logging.getLogger("kagent.loop")
 
 # --- Callback type aliases ---
 
@@ -40,6 +49,7 @@ async def agent_loop(
     context_builder: ContextBuilder | None = None,
     on_tool_result: OnToolResultFn | None = None,
     should_continue: ShouldContinueFn | None = None,
+    hooks: Hooks | None = None,
     max_turns: int = 100,
 ) -> AsyncIterator[AgentEvent]:
     """Run a multi-turn agent loop.
@@ -57,6 +67,7 @@ async def agent_loop(
             If ``None``, uses ``DefaultBuilder()`` (pass-through).
         on_tool_result: Intercept tool results. If ``None``, results pass through.
         should_continue: Custom continuation logic. If ``None``, continues while tool_calls.
+        hooks: Optional lifecycle hooks for observability (logging, tracing, metrics).
         max_turns: Safety limit. ``0`` = unlimited.
 
     Yields:
@@ -71,15 +82,32 @@ async def agent_loop(
                 case TurnEnd(message=msg):
                     print(msg.extract_text())
     """
+    _hooks = hooks or Hooks()
+
     yield AgentStart()
 
     builder = context_builder or DefaultBuilder()
     run_id = uuid4().hex[:8]
+    agent_t0 = time.perf_counter()
+    total_usage: TokenUsage | None = None
+
+    _log.info(
+        "[%s] Agent loop start: provider=%s model=%s max_turns=%d",
+        run_id,
+        provider.name,
+        provider.model,
+        max_turns,
+    )
+    _hooks.on_agent_start(run_id=run_id, model=provider.model, provider=provider.name)
 
     turn_count = 0
     while max_turns == 0 or turn_count < max_turns:
         # === Single context construction point ===
         context = await builder.build(state)
+
+        turn_t0 = time.perf_counter()
+        _hooks.on_turn_start(run_id=run_id, turn_index=turn_count)
+        _hooks.on_llm_start(run_id=run_id, turn_index=turn_count)
 
         # Delegate to agent_step — all LLM streaming + tool execution happens there
         assistant_msg: Message | None = None
@@ -89,9 +117,44 @@ async def agent_loop(
             tools=state.tools,
             on_tool_result=on_tool_result,
         ):
-            # Intercept TurnEnd to record in trace
-            if isinstance(event, TurnEnd):
+            # --- Hook dispatch on intercepted events ---
+            if isinstance(event, TurnStart):
+                # TurnStart from step means LLM call is about to begin.
+                # on_llm_start already called above.
+                pass
+
+            elif isinstance(event, ToolExecStart):
+                _hooks.on_tool_start(
+                    run_id=run_id,
+                    turn_index=turn_count,
+                    call_id=event.call_id,
+                    tool_name=event.tool_name,
+                    arguments=event.arguments,
+                )
+
+            elif isinstance(event, ToolExecEnd):
+                _hooks.on_tool_end(
+                    run_id=run_id,
+                    turn_index=turn_count,
+                    call_id=event.call_id,
+                    tool_name=event.tool_name,
+                    result=event.result,
+                    duration_ms=event.duration_ms,
+                    is_error=event.is_error,
+                )
+
+            elif isinstance(event, TurnEnd):
                 assistant_msg = event.message
+
+                # LLM end hook
+                _hooks.on_llm_end(
+                    run_id=run_id,
+                    turn_index=turn_count,
+                    message=event.message,
+                    duration_ms=event.llm_duration_ms,
+                )
+
+                # Record in trace
                 state.trace.append(
                     TraceEntry.assistant(
                         event.message,
@@ -109,8 +172,32 @@ async def agent_loop(
                         )
                     )
 
-            # Intercept AgentError to terminate
-            if isinstance(event, AgentError):
+                # Accumulate total usage
+                if event.message.usage:
+                    total_usage = (
+                        total_usage + event.message.usage if total_usage else event.message.usage
+                    )
+
+                # Turn end hook
+                turn_duration_ms = (time.perf_counter() - turn_t0) * 1000
+                _hooks.on_turn_end(
+                    run_id=run_id,
+                    turn_index=turn_count,
+                    message=event.message,
+                    tool_results=event.tool_results,
+                    llm_duration_ms=event.llm_duration_ms,
+                    duration_ms=turn_duration_ms,
+                )
+
+            elif isinstance(event, AgentError):
+                _log.error("[%s] Agent error at turn %d: %s", run_id, turn_count, event.error)
+                agent_duration_ms = (time.perf_counter() - agent_t0) * 1000
+                _hooks.on_agent_end(
+                    run_id=run_id,
+                    turn_count=turn_count,
+                    duration_ms=agent_duration_ms,
+                    usage=total_usage,
+                )
                 yield event
                 yield AgentEnd(messages=state.messages)
                 return
@@ -119,6 +206,13 @@ async def agent_loop(
 
         if assistant_msg is None:
             # Should not happen — AgentError should have been yielded
+            agent_duration_ms = (time.perf_counter() - agent_t0) * 1000
+            _hooks.on_agent_end(
+                run_id=run_id,
+                turn_count=turn_count,
+                duration_ms=agent_duration_ms,
+                usage=total_usage,
+            )
             yield AgentEnd(messages=state.messages)
             return
 
@@ -131,4 +225,17 @@ async def agent_loop(
         elif not assistant_msg.tool_calls:
             break
 
+    agent_duration_ms = (time.perf_counter() - agent_t0) * 1000
+    _log.info(
+        "[%s] Agent loop end: turns=%d duration=%.0fms",
+        run_id,
+        turn_count,
+        agent_duration_ms,
+    )
+    _hooks.on_agent_end(
+        run_id=run_id,
+        turn_count=turn_count,
+        duration_ms=agent_duration_ms,
+        usage=total_usage,
+    )
     yield AgentEnd(messages=state.messages)

@@ -8,6 +8,8 @@ over what goes to the LLM. No state management, no loop, no continuation.
 from __future__ import annotations
 
 import json
+import logging
+import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 
 from kai import Context, DoneEvent, ErrorEvent, Message, Provider, Tool, ToolResult, stream
@@ -23,6 +25,8 @@ from kagent.event import (
     TurnEnd,
     TurnStart,
 )
+
+_log = logging.getLogger("kagent.step")
 
 type OnToolResultFn = Callable[[str, str, ToolResult], Awaitable[ToolResult]]
 """Called after tool execution. Receives ``(call_id, tool_name, result)``.
@@ -87,6 +91,7 @@ async def agent_step(
     yield TurnStart()
 
     # Stream LLM response
+    llm_t0 = time.perf_counter()
     assistant_msg: Message | None = None
     async for stream_event in await stream(provider, context):
         yield StreamChunk(event=stream_event)
@@ -95,12 +100,16 @@ async def agent_step(
             case DoneEvent(message=msg):
                 assistant_msg = msg
             case ErrorEvent(error=err):
+                _log.error("LLM stream error in agent_step: %s", err)
                 yield AgentError(error=err)
                 return
             case _:
                 pass
 
+    llm_duration_ms = (time.perf_counter() - llm_t0) * 1000
+
     if assistant_msg is None:
+        _log.error("Stream ended without DoneEvent or ErrorEvent")
         yield AgentError(error=RuntimeError("Stream ended without DoneEvent or ErrorEvent"))
         return
 
@@ -120,6 +129,11 @@ async def agent_step(
                     tool_name=tool_call.name,
                     arguments=arguments,
                 )
+                _log.warning(
+                    "Tool %s: invalid JSON arguments: %s",
+                    tool_call.name,
+                    e,
+                )
 
                 if on_tool_result is not None:
                     result = await on_tool_result(tool_call.id, tool_call.name, result)
@@ -129,6 +143,7 @@ async def agent_step(
                     tool_name=tool_call.name,
                     result=result,
                     is_error=result.is_error,
+                    duration_ms=0.0,
                 )
                 tool_result_messages.append(
                     Message.tool_result(tool_call.id, result.output, is_error=result.is_error)
@@ -142,28 +157,45 @@ async def agent_step(
             )
 
             # Look up and execute tool
+            tool_t0 = time.perf_counter()
             tool = tool_map.get(tool_call.name)
             if tool is None:
                 result = ToolResult.error(f"Tool not found: {tool_call.name}")
+                _log.warning("Tool not found: %s", tool_call.name)
             else:
                 try:
                     result = await _execute_tool(tool, arguments)
                 except Exception as e:
                     result = ToolResult.error(str(e))
+                    _log.error("Tool %s execution error: %s", tool_call.name, e)
 
             # on_tool_result interception
             if on_tool_result is not None:
                 result = await on_tool_result(tool_call.id, tool_call.name, result)
+
+            tool_duration_ms = (time.perf_counter() - tool_t0) * 1000
+
+            _log.info(
+                "Tool %s completed: is_error=%s duration=%.0fms",
+                tool_call.name,
+                result.is_error,
+                tool_duration_ms,
+            )
 
             yield ToolExecEnd(
                 call_id=tool_call.id,
                 tool_name=tool_call.name,
                 result=result,
                 is_error=result.is_error,
+                duration_ms=tool_duration_ms,
             )
 
             tool_result_messages.append(
                 Message.tool_result(tool_call.id, result.output, is_error=result.is_error)
             )
 
-    yield TurnEnd(message=assistant_msg, tool_results=tool_result_messages)
+    yield TurnEnd(
+        message=assistant_msg,
+        tool_results=tool_result_messages,
+        llm_duration_ms=llm_duration_ms,
+    )

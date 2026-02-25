@@ -19,6 +19,8 @@ Example::
     print(message.extract_text())
 """
 
+import logging as _logging
+
 # Core functions
 # Errors
 from kai.errors import (
@@ -109,3 +111,5 @@ __all__ = [
     "OpenAIResponses",
     "Anthropic",
 ]
+
+_logging.getLogger("kai").addHandler(_logging.NullHandler())
