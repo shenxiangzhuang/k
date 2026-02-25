@@ -4,8 +4,8 @@ Create an Agent with tools, ask a question, get an answer.
 The agent automatically calls tools when needed and loops until done.
 
 Run:
-    export DEEPSEEK_API_KEY=sk-...
-    uv run python examples/01_quickstart.py
+    export MINIMAX_API_KEY=...
+    uv run python examples/basics/01_quickstart.py
 """
 
 import asyncio
@@ -20,10 +20,15 @@ from kagent import Agent
 def make_provider() -> Anthropic:
     # return Anthropic(model="claude-sonnet-4-20250514")
     # return OpenAICompletions(model="gpt-4o")
+    # return Anthropic(
+    #     model="deepseek-chat",
+    #     api_key=os.environ.get("DEEPSEEK_API_KEY"),
+    #     base_url="https://api.deepseek.com/anthropic",
+    # )
     return Anthropic(
-        model="deepseek-chat",
-        api_key=os.environ.get("DEEPSEEK_API_KEY"),
-        base_url="https://api.deepseek.com/anthropic",
+        model="MiniMax-M2.5",
+        api_key=os.environ.get("MINIMAX_API_KEY"),
+        base_url="https://api.minimaxi.com/anthropic",
     )
 
 

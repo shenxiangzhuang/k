@@ -9,11 +9,11 @@ Demonstrates:
   3. Interactive:   steer() / abort() — redirect or cancel a running agent.
 
 Run:
-    export DEEPSEEK_API_KEY=sk-...
-    uv run python examples/02_multi_tool_agent.py              # all demos
-    uv run python examples/02_multi_tool_agent.py non_stream   # demo 1
-    uv run python examples/02_multi_tool_agent.py stream       # demo 2
-    uv run python examples/02_multi_tool_agent.py interactive  # demo 3
+    export MINIMAX_API_KEY=...
+    uv run python examples/basics/02_multi_tool_agent.py              # all demos
+    uv run python examples/basics/02_multi_tool_agent.py non_stream   # demo 1
+    uv run python examples/basics/02_multi_tool_agent.py stream       # demo 2
+    uv run python examples/basics/02_multi_tool_agent.py interactive  # demo 3
 """
 
 import asyncio
@@ -46,6 +46,11 @@ def make_provider() -> Anthropic:
         api_key=os.environ.get("DEEPSEEK_API_KEY"),
         base_url="https://api.deepseek.com/anthropic",
     )
+    # return Anthropic(
+    #     model="MiniMax-M2.5",
+    #     api_key=os.environ.get("MINIMAX_API_KEY"),
+    #     base_url="https://api.minimaxi.com/anthropic",
+    # )
 
 
 # ---------------------------------------------------------------------------

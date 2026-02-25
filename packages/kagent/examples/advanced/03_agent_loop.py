@@ -11,8 +11,8 @@ Demonstrates:
   - State is mutated in-place; inspect state.trace after the run.
 
 Run:
-    export DEEPSEEK_API_KEY=sk-...
-    uv run python examples/03_advanced_agent_loop.py
+    export MINIMAX_API_KEY=...
+    uv run python examples/advanced/03_agent_loop.py
 """
 
 import asyncio
@@ -28,10 +28,15 @@ from kagent import AgentError, AgentState, Trace, TraceEntry, TurnEnd, agent_loo
 def make_provider() -> Anthropic:
     # return Anthropic(model="claude-sonnet-4-20250514")
     # return OpenAICompletions(model="gpt-4o")
+    # return Anthropic(
+    #     model="deepseek-chat",
+    #     api_key=os.environ.get("DEEPSEEK_API_KEY"),
+    #     base_url="https://api.deepseek.com/anthropic",
+    # )
     return Anthropic(
-        model="deepseek-chat",
-        api_key=os.environ.get("DEEPSEEK_API_KEY"),
-        base_url="https://api.deepseek.com/anthropic",
+        model="MiniMax-M2.5",
+        api_key=os.environ.get("MINIMAX_API_KEY"),
+        base_url="https://api.minimaxi.com/anthropic",
     )
 
 

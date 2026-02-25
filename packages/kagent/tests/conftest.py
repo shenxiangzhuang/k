@@ -47,6 +47,28 @@ class MockProvider:
             yield chunk
 
 
+class ErrorProvider:
+    """A mock provider that raises an error on stream_raw."""
+
+    def __init__(self, error: Exception, *, name: str = "error", model: str = "error-1") -> None:
+        self._error = error
+        self._name = name
+        self._model = model
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def model(self) -> str:
+        return self._model
+
+    async def stream_raw(self, context: Context, **kwargs: Any) -> AsyncIterator[Chunk]:
+        raise self._error
+        # Make this a valid async generator
+        yield  # type: ignore[misc]  # pragma: no cover
+
+
 def text_chunks(*texts: str) -> list[Chunk]:
     """Create chunks for a simple text response."""
     result: list[Chunk] = [TextChunk(text=t) for t in texts]

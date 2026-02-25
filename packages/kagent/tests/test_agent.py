@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 from conftest import (
+    ErrorProvider,
     MockProvider,
     make_echo_tool,
     text_chunks,
@@ -12,7 +13,7 @@ from conftest import (
 from kai import Message, ToolResult
 
 from kagent.agent import Agent
-from kagent.event import AgentAbort, AgentEnd, AgentEvent, AgentStart, TurnEnd
+from kagent.event import AgentAbort, AgentEnd, AgentError, AgentEvent, AgentStart, TurnEnd
 
 
 class TestAgentRun:
@@ -219,3 +220,50 @@ class TestAgentAbort:
                 agent.abort()
 
         assert agent.is_running is False
+
+
+class TestAgentErrorPropagation:
+    @pytest.mark.asyncio
+    async def test_complete_raises_on_provider_error(self) -> None:
+        """complete() should raise RuntimeError with the original error as cause."""
+        from kai.errors import ProviderError
+
+        provider = ErrorProvider(ProviderError("API connection failed"))
+        agent = Agent(provider=provider, system="test")
+
+        with pytest.raises(RuntimeError, match="API connection failed") as exc_info:
+            await agent.complete("Hello")
+
+        assert isinstance(exc_info.value.__cause__, ProviderError)
+
+    @pytest.mark.asyncio
+    async def test_run_yields_agent_error_on_provider_error(self) -> None:
+        """run() should yield AgentError when the provider raises."""
+        from kai.errors import ProviderError
+
+        provider = ErrorProvider(ProviderError("stream broke"))
+        agent = Agent(provider=provider, system="test")
+
+        events = [e async for e in agent.run("Hello")]
+
+        error_events = [e for e in events if isinstance(e, AgentError)]
+        assert len(error_events) == 1
+        assert "stream broke" in str(error_events[0].error)
+
+        end_events = [e for e in events if isinstance(e, AgentEnd)]
+        assert len(end_events) == 1
+
+    @pytest.mark.asyncio
+    async def test_complete_raises_on_empty_response(self) -> None:
+        """complete() should raise when the provider returns no content."""
+        from kai.chunk import UsageChunk
+        from kai.usage import TokenUsage
+
+        # A provider that returns only a usage chunk (no text, no tool call).
+        provider = MockProvider(
+            [[UsageChunk(usage=TokenUsage(input_tokens=0, output_tokens=0))]]
+        )
+        agent = Agent(provider=provider, system="test")
+
+        with pytest.raises(RuntimeError, match="Agent loop failed"):
+            await agent.complete("Hello")

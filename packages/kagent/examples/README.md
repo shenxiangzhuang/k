@@ -1,6 +1,6 @@
 # kagent examples
 
-Four self-contained scripts (plus one for context builders) that cover the full three-level API.
+Eight self-contained scripts organized into three groups.
 Read them in order — each builds on the concepts of the previous one.
 
 ## Prerequisites
@@ -13,19 +13,34 @@ uv sync
 
 ## Examples
 
+### Basics — Getting started with `Agent`
+
+| File | What it shows |
+|------|---------------|
+| [`basics/01_quickstart.py`](basics/01_quickstart.py) | Create an agent with tools, one-shot `complete()` |
+| [`basics/02_multi_tool_agent.py`](basics/02_multi_tool_agent.py) | Non-streaming & streaming, multi-tool, multi-turn, steer/abort |
+
+### Advanced — Lower-level APIs & context management
+
 | File | Level | What it shows |
 |------|-------|---------------|
-| [`01_quickstart.py`](01_quickstart.py) | 2 — `Agent` | Create an agent with tools, one-shot `complete()` |
-| [`02_multi_tool_agent.py`](02_multi_tool_agent.py) | 2 — `Agent` | Non-streaming & streaming, multi-tool, multi-turn, steer/abort |
-| [`03_advanced_agent_loop.py`](03_advanced_agent_loop.py) | 1 — `agent_loop` | Custom `context_builder`, `should_continue`, `on_tool_result` |
-| [`04_advanced_agent_step.py`](04_advanced_agent_step.py) | 0 — `agent_step` | Single-step primitive; you own the loop and state |
-| [`05_context_builders.py`](05_context_builders.py) | 1–2 | Built-in context builders: sliding window, compaction, adaptive |
+| [`advanced/03_agent_loop.py`](advanced/03_agent_loop.py) | 1 — `agent_loop` | Custom `context_builder`, `should_continue`, `on_tool_result` |
+| [`advanced/04_agent_step.py`](advanced/04_agent_step.py) | 0 — `agent_step` | Single-step primitive; you own the loop and state |
+| [`advanced/05_context_builders.py`](advanced/05_context_builders.py) | 1–2 | Built-in context builders: sliding window, compaction, adaptive |
+
+### Observability — Logging, hooks & tracing
+
+| File | What it shows |
+|------|---------------|
+| [`observability/06_logging.py`](observability/06_logging.py) | stdlib logging for kai and kagent internals |
+| [`observability/07_hooks.py`](observability/07_hooks.py) | LoggingHooks, custom Hooks subclass, MultiHooks |
+| [`observability/08_trace.py`](observability/08_trace.py) | OTelHooks — OpenTelemetry tracing with Jaeger export |
 
 ## Running
 
 ```bash
-uv run python packages/kagent/examples/01_quickstart.py
-uv run python packages/kagent/examples/02_multi_tool_agent.py
+uv run python packages/kagent/examples/basics/01_quickstart.py
+uv run python packages/kagent/examples/observability/08_trace.py
 # … and so on
 ```
 

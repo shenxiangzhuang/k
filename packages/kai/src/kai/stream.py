@@ -6,6 +6,8 @@ and yields rich StreamEvent objects with partial message snapshots.
 complete() is a convenience wrapper that collects the full message.
 """
 
+import logging
+import time
 from collections.abc import AsyncIterator
 from typing import Any, cast
 
@@ -38,6 +40,8 @@ from kai.event import (
 from kai.message import ContentPart, Context, Message, TextPart, ThinkPart, ToolCall
 from kai.providers import Provider
 from kai.usage import TokenUsage
+
+_log = logging.getLogger("kai.stream")
 
 
 async def stream(
@@ -371,6 +375,17 @@ async def _stream_impl(
     context: Context,
     **kwargs: Any,
 ) -> AsyncIterator[StreamEvent]:
+    msg_count = len(context.messages) if context.messages else 0
+    tool_count = len(context.tools) if context.tools else 0
+    _log.debug(
+        "LLM stream start: provider=%s model=%s messages=%d tools=%d",
+        provider.name,
+        provider.model,
+        msg_count,
+        tool_count,
+    )
+    t0 = time.perf_counter()
+
     state = _StreamState()
 
     yield StartEvent()
@@ -380,9 +395,25 @@ async def _stream_impl(
             for event in state.process_chunk(chunk):
                 yield event
     except ProviderError as e:
+        duration_ms = (time.perf_counter() - t0) * 1000
+        _log.error(
+            "LLM stream error: provider=%s model=%s error=%s duration=%.0fms",
+            provider.name,
+            provider.model,
+            e,
+            duration_ms,
+        )
         yield ErrorEvent(error=e, partial=state.build_partial())
         return
     except Exception as e:
+        duration_ms = (time.perf_counter() - t0) * 1000
+        _log.error(
+            "LLM stream error (unexpected): provider=%s model=%s error=%s duration=%.0fms",
+            provider.name,
+            provider.model,
+            e,
+            duration_ms,
+        )
         yield ErrorEvent(error=e, partial=state.build_partial())
         return
 
@@ -395,10 +426,29 @@ async def _stream_impl(
     final = state.build_final(stop_reason=stop_reason)
 
     if not final.content and not final.tool_calls:
+        duration_ms = (time.perf_counter() - t0) * 1000
+        _log.error(
+            "LLM stream empty response: provider=%s model=%s duration=%.0fms",
+            provider.name,
+            provider.model,
+            duration_ms,
+        )
         yield ErrorEvent(
             error=EmptyResponseError("The provider returned an empty response."),
             partial=final,
         )
         return
+
+    duration_ms = (time.perf_counter() - t0) * 1000
+    usage = final.usage
+    _log.info(
+        "LLM stream complete: provider=%s model=%s in=%d out=%d stop=%s duration=%.0fms",
+        provider.name,
+        provider.model,
+        usage.input_tokens if usage else 0,
+        usage.output_tokens if usage else 0,
+        stop_reason,
+        duration_ms,
+    )
 
     yield DoneEvent(message=final)

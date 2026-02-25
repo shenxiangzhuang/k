@@ -30,6 +30,8 @@ class TurnEnd:
 
     message: Message
     tool_results: list[Message]
+    llm_duration_ms: float = 0.0
+    """Time spent streaming the LLM response (milliseconds)."""
     type: Literal["turn_end"] = "turn_end"
 
 
@@ -65,6 +67,8 @@ class ToolExecEnd:
     tool_name: str
     result: ToolResult
     is_error: bool
+    duration_ms: float = 0.0
+    """Tool execution wall-clock time (milliseconds)."""
     type: Literal["tool_exec_end"] = "tool_exec_end"
 
 
