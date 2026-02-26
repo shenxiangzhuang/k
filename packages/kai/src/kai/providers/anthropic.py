@@ -81,16 +81,17 @@ class Anthropic:
         self._model = model
         self._max_tokens = max_tokens
         self._thinking = thinking
-        # When api_key is the intended auth mechanism, prevent the SDK from
-        # injecting an Authorization header from ANTHROPIC_AUTH_TOKEN env var,
-        # which would confuse third-party Anthropic-compatible endpoints.
-        if "auth_token" not in client_kwargs:
-            client_kwargs["auth_token"] = None
-            self._client = AsyncAnthropic(api_key=api_key, base_url=base_url, **client_kwargs)
-            # Override after construction to suppress env var fallback.
-            self._client.auth_token = None
-        else:
-            self._client = AsyncAnthropic(api_key=api_key, base_url=base_url, **client_kwargs)
+
+        # Third-party Anthropic-compatible endpoints (MiniMax, DeepSeek, …)
+        # typically require ``Authorization: Bearer <key>`` rather than the
+        # native ``x-api-key`` header.  When a custom *base_url* is provided
+        # and no explicit *auth_token* is given, send the API key as a Bearer
+        # token so both header styles are present and the server can accept
+        # whichever it supports.
+        if "auth_token" not in client_kwargs and base_url:
+            client_kwargs["auth_token"] = api_key
+
+        self._client = AsyncAnthropic(api_key=api_key, base_url=base_url, **client_kwargs)
 
     @property
     def name(self) -> str:

@@ -55,10 +55,12 @@ class OpenAICompletions:
         model: str,
         api_key: str | None = None,
         base_url: str | None = None,
+        extra_body: dict[str, object] | None = None,
     ) -> None:
         if api_key is None:
             api_key = os.environ.get("OPENAI_API_KEY")
         self._model = model
+        self._extra_body = extra_body
         self._client = AsyncOpenAI(api_key=api_key, base_url=base_url)
 
     @property
@@ -85,6 +87,9 @@ class OpenAICompletions:
             api_kwargs["top_p"] = kwargs["top_p"]
         if "stop" in kwargs:
             api_kwargs["stop"] = kwargs["stop"]
+
+        if self._extra_body:
+            api_kwargs["extra_body"] = self._extra_body
 
         try:
             response = await self._client.chat.completions.create(
@@ -180,7 +185,7 @@ def _convert_content_for_openai(
     return parts if parts else ""
 
 
-# --- Reasoning field detection ---------------------------------------------------
+# --- Reasoning helpers ---------------------------------------------------------------
 
 # Fields that various OpenAI-compatible providers use for thinking/reasoning
 # content on ``delta``.  We probe them in order and use the first non-empty
@@ -240,8 +245,10 @@ async def _convert_stream(
     After the stream ends the last active tool call is closed as well.
 
     Reasoning/thinking content is extracted via :func:`_extract_reasoning_text`
-    which supports multiple field conventions used by different providers
-    (``reasoning_content``, ``reasoning``, ``reasoning_details``, etc.).
+    which probes dedicated reasoning fields (``reasoning_content``,
+    ``reasoning_details``, etc.).  For providers that embed ``<think>`` tags
+    in ``delta.content`` (e.g. MiniMax OpenAI), use ``extra_body={"reasoning_split": True}``
+    to instruct the API to separate thinking into dedicated fields instead.
     """
     current_tool_id: str | None = None
 
@@ -269,7 +276,7 @@ async def _convert_stream(
 
         delta = chunk.choices[0].delta
 
-        # Reasoning/thinking content (DeepSeek, MiniMax, llama.cpp, …)
+        # Reasoning/thinking via dedicated fields (DeepSeek, MiniMax-M1, …)
         reasoning = _extract_reasoning_text(delta)
         if reasoning:
             yield ThinkChunk(text=reasoning)

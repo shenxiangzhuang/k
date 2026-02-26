@@ -44,6 +44,8 @@ def _create_provider(config: CastleConfig) -> object:
         kwargs["api_key"] = provider_cfg.api_key
     if provider_cfg.base_url:
         kwargs["base_url"] = provider_cfg.base_url
+    if provider_cfg.extra_body:
+        kwargs["extra_body"] = provider_cfg.extra_body
 
     # Merge model-specific options (max_tokens, reasoning, thinking, …)
     model_cfg = provider_cfg.get_model(config.default_model)
