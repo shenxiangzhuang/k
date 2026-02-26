@@ -197,6 +197,13 @@ class TelegramChannel:
         if self._castle is None:
             return
 
+        chat = update.effective_chat
+        user = update.effective_user
+        sid = _session_id_for_chat(chat.type, chat.id, user.id if user else None)
+
+        # Ensure current session is loaded before switching.
+        self._castle.session_manager.get_or_create(sid)
+
         from telegram import (  # type: ignore[import-untyped]
             InlineKeyboardButton,
             InlineKeyboardMarkup,
@@ -207,8 +214,7 @@ class TelegramChannel:
             await update.message.reply_text("No models available (check API keys).")
             return
 
-        current_provider = self._castle.active_provider_name
-        current_model = self._castle.active_model
+        current_provider, current_model = self._castle.get_active_model(sid)
 
         # Build inline keyboard — one button per model
         buttons: list[list[Any]] = []
@@ -240,11 +246,20 @@ class TelegramChannel:
             return
         _, provider_name, model_id = parts
 
+        chat = update.effective_chat
+        user = update.effective_user
+        sid = _session_id_for_chat(chat.type, chat.id, user.id if user else None)
+
+        # Ensure current session is loaded before switching.
+        self._castle.session_manager.get_or_create(sid)
+
         try:
-            self._castle.switch_model(provider_name, model_id)
-            text = f"✓ Switched to *{model_id}* ({provider_name})"
+            self._castle.switch_model(provider_name, model_id, session_id=sid)
+            text = f"✓ Session model switched to *{model_id}* ({provider_name})"
             await query.edit_message_text(text, parse_mode="Markdown")
         except ValueError as e:
+            await query.edit_message_text(f"✗ {e}")
+        except KeyError as e:
             await query.edit_message_text(f"✗ {e}")
 
     async def _on_message(self, update: Any, context: Any) -> None:

@@ -67,7 +67,7 @@ def main() -> None:
     args = parser.parse_args()
 
     # Logging
-    level = logging.DEBUG if args.verbose else logging.WARNING
+    level = logging.DEBUG if args.verbose else logging.INFO
     logging.basicConfig(
         level=level,
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
