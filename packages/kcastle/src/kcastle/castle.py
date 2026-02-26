@@ -122,12 +122,13 @@ class Castle:
         self._skill_manager = skill_manager
         self._channels: list[Channel] = channels
         self._shutdown_event = asyncio.Event()
-        # Mutable runtime state — updated by switch_model()
+        # Runtime defaults for newly created sessions.
         self._provider = provider
         self._system_prompt = system_prompt
         self._skill_tools = skill_tools
         self._active_provider_name = config.default_provider
         self._active_model = config.default_model
+        self._session_models: dict[str, tuple[str, str]] = {}
 
     # --- Properties ---
 
@@ -150,6 +151,41 @@ class Castle:
     @property
     def active_model(self) -> str:
         return self._active_model
+
+    def get_active_model(self, session_id: str | None = None) -> tuple[str, str]:
+        """Return active ``(provider_name, model_id)``.
+
+        If ``session_id`` has an override, returns that override; otherwise
+        returns the global default runtime model.
+        """
+        if session_id is not None and session_id in self._session_models:
+            return self._session_models[session_id]
+        return (self._active_provider_name, self._active_model)
+
+    def _build_provider(self, provider_name: str, model_id: str) -> object:
+        """Validate and build a provider instance for ``provider_name/model_id``."""
+        from dataclasses import replace
+
+        if provider_name not in self._config.providers:
+            raise ValueError(f"Unknown provider: {provider_name!r}")
+
+        pcfg = self._config.providers[provider_name]
+        if pcfg.get_model(model_id) is None:
+            raise ValueError(f"Unknown model: {model_id!r} in provider {provider_name!r}")
+
+        new_config = replace(
+            self._config,
+            default_provider=provider_name,
+            default_model=model_id,
+        )
+        return _create_provider(new_config)
+
+    def _apply_provider_to_session(self, session_id: str, provider: object) -> None:
+        """Hot-swap provider for one loaded session."""
+        session = self._session_manager.get(session_id)
+        if session is None:
+            raise KeyError(f"Session {session_id!r} is not loaded")
+        session._agent._provider = provider  # pyright: ignore[reportPrivateUsage, reportAttributeAccessIssue]
 
     # --- Agent factory ---
 
@@ -187,39 +223,26 @@ class Castle:
                 result.append((pname, m.id))
         return result
 
-    def switch_model(self, provider_name: str, model_id: str) -> None:
+    def switch_model(
+        self,
+        provider_name: str,
+        model_id: str,
+        *,
+        session_id: str,
+    ) -> None:
         """Switch the active provider and model at runtime.
 
-        Swaps the provider on all live session agents and updates the
-        factory so new sessions also use the new model.
+        Only updates the specified loaded session.
         """
-        from dataclasses import replace
-
-        # Validate
-        if provider_name not in self._config.providers:
-            raise ValueError(f"Unknown provider: {provider_name!r}")
-        pcfg = self._config.providers[provider_name]
-        if pcfg.get_model(model_id) is None:
-            raise ValueError(f"Unknown model: {model_id!r} in provider {provider_name!r}")
-
-        # Create new provider
-        new_config = replace(
-            self._config,
-            default_provider=provider_name,
-            default_model=model_id,
+        provider = self._build_provider(provider_name, model_id)
+        self._apply_provider_to_session(session_id, provider)
+        self._session_models[session_id] = (provider_name, model_id)
+        _log.info(
+            "Switched session %s to %s / %s",
+            session_id,
+            provider_name,
+            model_id,
         )
-        self._provider = _create_provider(new_config)
-
-        # Hot-swap provider on all live session agents
-        for session in self._session_manager._sessions.values():  # pyright: ignore[reportPrivateUsage]
-            session._agent._provider = self._provider  # pyright: ignore[reportPrivateUsage, reportAttributeAccessIssue]
-
-        # Update factory for new sessions
-        self._session_manager._agent_factory = self._make_agent_factory()  # pyright: ignore[reportPrivateUsage]
-
-        self._active_provider_name = provider_name
-        self._active_model = model_id
-        _log.info("Switched to %s / %s", provider_name, model_id)
 
     # --- Factory ---
 
