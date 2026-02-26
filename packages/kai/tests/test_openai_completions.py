@@ -21,7 +21,9 @@ from kai.chunk import (
 )
 from kai.message import Context, ImagePart, Message, TextPart, ThinkPart, ToolCall
 from kai.providers.openai import OpenAICompletions
-from kai.providers.openai._completions import _extract_reasoning_text  # pyright: ignore[reportPrivateUsage]
+from kai.providers.openai._completions import (
+    _extract_reasoning_text as _extract_reasoning_text,  # pyright: ignore[reportPrivateUsage]
+)
 
 # --- Helpers ---
 
@@ -487,3 +489,5 @@ class TestExtractReasoningText:
             ]
 
         assert _extract_reasoning_text(_Delta()) == "scalar"
+
+

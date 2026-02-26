@@ -95,6 +95,9 @@ class ProviderConfig:
     models: list[ModelConfig] = field(default_factory=list)  # pyright: ignore[reportUnknownVariableType]
     """Available models for this provider."""
 
+    extra_body: dict[str, object] | None = None
+    """Extra body parameters passed to the LLM API (e.g. ``reasoning_split``)."""
+
     def active_models(self) -> list[ModelConfig]:
         """Return only active models."""
         return [m for m in self.models if m.active]
@@ -271,12 +274,19 @@ def _parse_providers(data: dict[str, Any]) -> dict[str, ProviderConfig]:
             continue
         base_url_val = cfg_dict.get("base_url")
         base_url: str | None = str(base_url_val) if base_url_val else None
+        extra_body_val = cfg_dict.get("extra_body")
+        extra_body: dict[str, object] | None = (
+            _to_str_dict(extra_body_val)  # pyright: ignore[reportUnknownArgumentType]
+            if isinstance(extra_body_val, dict)
+            else None
+        )
         providers[name_str] = ProviderConfig(
             name=name_str,
             protocol=str(cfg_dict.get("protocol", "openai")),
             api_key=str(cfg_dict.get("api_key", "")),
             base_url=base_url,
             models=_parse_models(cfg_dict.get("models")),
+            extra_body=extra_body,
         )
     return providers
 
@@ -342,6 +352,10 @@ def _builtin_provider_dicts() -> dict[str, dict[str, Any]]:
             "base_url": "https://api.minimaxi.com/v1",
             "api_key": "${MINIMAX_API_KEY}",
             "models": dict(mm_models),
+            # MiniMax OpenAI endpoint embeds thinking as <think> tags in
+            # content by default.  Setting reasoning_split=True instructs
+            # the API to separate thinking into the reasoning_details field.
+            "extra_body": {"reasoning_split": True},
         },
         "minimax-anthropic": {
             "protocol": "anthropic",
