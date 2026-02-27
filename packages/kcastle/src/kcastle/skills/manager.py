@@ -8,15 +8,17 @@ and CRUD operations for skill directories.
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 
 from kai import Tool
 
 from kcastle.skills.loader import LoadedSkill, SkillLoader
 from kcastle.skills.resolver import SkillMatch, SkillResolver
-from kcastle.skills.schema import SkillMeta, load_skill_meta, write_skill_yaml
+from kcastle.skills.schema import SkillMeta, load_skill_meta, write_skill_md
 
 _log = logging.getLogger("kcastle.skills")
+_SKILL_ID_RE = re.compile(r"^[a-z0-9-]{1,64}$")
 
 
 def find_project_root(cwd: Path) -> Path:
@@ -122,12 +124,16 @@ class SkillManager:
         return results
 
     def collect_tools(self, loaded: list[LoadedSkill]) -> list[Tool]:
-        """Flatten all tools from loaded skills."""
+        """Flatten all tools from loaded skills.
+
+        Skills are prompt-only in this architecture, so this generally returns
+        an empty list. Kept for API compatibility.
+        """
         return [tool for skill in loaded for tool in skill.tools]
 
     def collect_prompts(self, loaded: list[LoadedSkill]) -> str:
-        """Concatenate prompt fragments from loaded skills."""
-        fragments = [s.prompt_fragment for s in loaded if s.prompt_fragment]
+        """Concatenate instruction bodies from loaded skills."""
+        fragments = [s.instructions for s in loaded if s.instructions]
         return "\n\n".join(fragments)
 
     # --- Create / Update ---
@@ -139,7 +145,7 @@ class SkillManager:
         name: str | None = None,
         description: str = "",
         tags: list[str] | None = None,
-        prompt_fragment: str = "",
+        instructions: str = "",
         target: str = "user",
     ) -> SkillMeta:
         """Create a new skill directory in the target layer.
@@ -149,7 +155,7 @@ class SkillManager:
             name: Human-readable name (defaults to skill_id).
             description: Short description.
             tags: Searchable tags.
-            prompt_fragment: System prompt guidance.
+            instructions: Markdown instruction body.
             target: Layer to create in (``user`` or ``project``).
 
         Returns:
@@ -159,30 +165,32 @@ class SkillManager:
             ValueError: If the target layer directory is not configured or
                 a skill with this ID already exists in the target.
         """
+        normalized_id = self._normalize_skill_id(skill_id)
         target_dir = self._resolve_target_dir(target)
-        skill_dir = target_dir / skill_id
+        skill_dir = target_dir / normalized_id
         if skill_dir.exists():
-            raise ValueError(f"Skill '{skill_id}' already exists at {skill_dir}")
+            raise ValueError(f"Skill '{normalized_id}' already exists at {skill_dir}")
+
+        final_name = self._normalize_skill_id(name or normalized_id)
+        final_description = description.strip()
+        if not final_description:
+            raise ValueError("description is required")
 
         meta = SkillMeta(
-            id=skill_id,
-            name=name or skill_id,
-            description=description,
+            id=normalized_id,
+            name=final_name,
+            description=final_description,
             tags=tags or [],
-            prompt_fragment=prompt_fragment,
+            instructions=instructions,
             source=target,
             path=skill_dir.resolve(),
+            file_path=(skill_dir / "SKILL.md").resolve(),
         )
-        write_skill_yaml(skill_dir, meta)
-
-        # Create empty tools.py
-        tools_path = skill_dir / meta.entry
-        if not tools_path.exists():
-            tools_path.write_text(f'"""Tools for skill: {skill_id}."""\n', encoding="utf-8")
+        write_skill_md(skill_dir, meta)
 
         # Re-discover to update index
         self.discover()
-        _log.info("Created skill %s in %s layer", skill_id, target)
+        _log.info("Created skill %s in %s layer", normalized_id, target)
         return meta
 
     def update_skill(
@@ -192,7 +200,8 @@ class SkillManager:
         name: str | None = None,
         description: str | None = None,
         tags: list[str] | None = None,
-        prompt_fragment: str | None = None,
+        instructions: str | None = None,
+        append_instructions: str | None = None,
     ) -> SkillMeta:
         """Update an existing skill's metadata.
 
@@ -213,16 +222,23 @@ class SkillManager:
 
         updates: dict[str, object] = {}
         if name is not None:
-            updates["name"] = name
+            updates["name"] = self._normalize_skill_id(name)
         if description is not None:
-            updates["description"] = description
+            desc = description.strip()
+            if not desc:
+                raise ValueError("description cannot be empty")
+            updates["description"] = desc
         if tags is not None:
             updates["tags"] = tags
-        if prompt_fragment is not None:
-            updates["prompt_fragment"] = prompt_fragment
+        if instructions is not None:
+            updates["instructions"] = instructions.strip()
+        elif append_instructions:
+            suffix = append_instructions.strip()
+            existing = meta.instructions.strip()
+            updates["instructions"] = f"{existing}\n\n{suffix}".strip() if existing else suffix
 
         updated = replace(meta, **updates)
-        write_skill_yaml(meta.path, updated)
+        write_skill_md(meta.path, updated)
 
         # Re-discover
         self.discover()
@@ -240,6 +256,15 @@ class SkillManager:
                 raise ValueError("No project skills directory configured")
             return self._project_dir
         raise ValueError(f"Invalid target layer: {target!r} (expected 'user' or 'project')")
+
+    @staticmethod
+    def _normalize_skill_id(raw: str) -> str:
+        normalized = raw.strip().lower().replace("_", "-")
+        if not _SKILL_ID_RE.fullmatch(normalized):
+            raise ValueError(
+                "Invalid skill id/name. Use lowercase letters, digits, hyphens, <=64 chars"
+            )
+        return normalized
 
     @staticmethod
     def _scan_dir(directory: Path, source: str) -> list[SkillMeta]:
