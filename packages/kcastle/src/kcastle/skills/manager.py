@@ -1,24 +1,22 @@
-"""Skill lifecycle management — discover, search, create, update.
+"""Skill lifecycle management — discover, search, and load.
 
 ``SkillManager`` is the main entry point for all skill operations in kcastle.
 It handles layered discovery (builtin → user → project), override resolution,
-and CRUD operations for skill directories.
+and prompt loading.
 """
 
 from __future__ import annotations
 
 import logging
-import re
 from pathlib import Path
 
 from kai import Tool
 
 from kcastle.skills.loader import LoadedSkill, SkillLoader
 from kcastle.skills.resolver import SkillMatch, SkillResolver
-from kcastle.skills.schema import SkillMeta, load_skill_meta, write_skill_md
+from kcastle.skills.schema import SkillMeta, load_skill_meta
 
 _log = logging.getLogger("kcastle.skills")
-_SKILL_ID_RE = re.compile(r"^[a-z0-9-]{1,64}$")
 
 
 def find_project_root(cwd: Path) -> Path:
@@ -36,7 +34,7 @@ def find_project_root(cwd: Path) -> Path:
 
 
 class SkillManager:
-    """Manages the full skill lifecycle: discover, search, load, create, update.
+    """Manages the skill runtime lifecycle: discover, search, and load.
 
     Skills are discovered from three layers (lowest → highest priority):
     1. Builtin skills (shipped with kcastle)
@@ -136,135 +134,7 @@ class SkillManager:
         fragments = [s.instructions for s in loaded if s.instructions]
         return "\n\n".join(fragments)
 
-    # --- Create / Update ---
-
-    def create_skill(
-        self,
-        skill_id: str,
-        *,
-        name: str | None = None,
-        description: str = "",
-        tags: list[str] | None = None,
-        instructions: str = "",
-        target: str = "user",
-    ) -> SkillMeta:
-        """Create a new skill directory in the target layer.
-
-        Args:
-            skill_id: Unique skill identifier (becomes directory name).
-            name: Human-readable name (defaults to skill_id).
-            description: Short description.
-            tags: Searchable tags.
-            instructions: Markdown instruction body.
-            target: Layer to create in (``user`` or ``project``).
-
-        Returns:
-            The created ``SkillMeta``.
-
-        Raises:
-            ValueError: If the target layer directory is not configured or
-                a skill with this ID already exists in the target.
-        """
-        normalized_id = self._normalize_skill_id(skill_id)
-        target_dir = self._resolve_target_dir(target)
-        skill_dir = target_dir / normalized_id
-        if skill_dir.exists():
-            raise ValueError(f"Skill '{normalized_id}' already exists at {skill_dir}")
-
-        final_name = self._normalize_skill_id(name or normalized_id)
-        final_description = description.strip()
-        if not final_description:
-            raise ValueError("description is required")
-
-        meta = SkillMeta(
-            id=normalized_id,
-            name=final_name,
-            description=final_description,
-            tags=tags or [],
-            instructions=instructions,
-            source=target,
-            path=skill_dir.resolve(),
-            file_path=(skill_dir / "SKILL.md").resolve(),
-        )
-        write_skill_md(skill_dir, meta)
-
-        # Re-discover to update index
-        self.discover()
-        _log.info("Created skill %s in %s layer", normalized_id, target)
-        return meta
-
-    def update_skill(
-        self,
-        skill_id: str,
-        *,
-        name: str | None = None,
-        description: str | None = None,
-        tags: list[str] | None = None,
-        instructions: str | None = None,
-        append_instructions: str | None = None,
-    ) -> SkillMeta:
-        """Update an existing skill's metadata.
-
-        Only non-None fields are updated.
-
-        Raises:
-            KeyError: If the skill does not exist.
-            PermissionError: If the skill is builtin (read-only).
-        """
-        meta = self._skills.get(skill_id)
-        if meta is None:
-            raise KeyError(f"Skill '{skill_id}' not found")
-        if meta.source == "builtin":
-            raise PermissionError(f"Cannot update builtin skill '{skill_id}'")
-
-        # Build updated meta
-        from dataclasses import replace
-
-        updates: dict[str, object] = {}
-        if name is not None:
-            updates["name"] = self._normalize_skill_id(name)
-        if description is not None:
-            desc = description.strip()
-            if not desc:
-                raise ValueError("description cannot be empty")
-            updates["description"] = desc
-        if tags is not None:
-            updates["tags"] = tags
-        if instructions is not None:
-            updates["instructions"] = instructions.strip()
-        elif append_instructions:
-            suffix = append_instructions.strip()
-            existing = meta.instructions.strip()
-            updates["instructions"] = f"{existing}\n\n{suffix}".strip() if existing else suffix
-
-        updated = replace(meta, **updates)
-        write_skill_md(meta.path, updated)
-
-        # Re-discover
-        self.discover()
-        _log.info("Updated skill %s", skill_id)
-        return updated
-
     # --- Internal ---
-
-    def _resolve_target_dir(self, target: str) -> Path:
-        """Resolve the directory for a given target layer."""
-        if target == "user":
-            return self._user_dir
-        if target == "project":
-            if self._project_dir is None:
-                raise ValueError("No project skills directory configured")
-            return self._project_dir
-        raise ValueError(f"Invalid target layer: {target!r} (expected 'user' or 'project')")
-
-    @staticmethod
-    def _normalize_skill_id(raw: str) -> str:
-        normalized = raw.strip().lower().replace("_", "-")
-        if not _SKILL_ID_RE.fullmatch(normalized):
-            raise ValueError(
-                "Invalid skill id/name. Use lowercase letters, digits, hyphens, <=64 chars"
-            )
-        return normalized
 
     @staticmethod
     def _scan_dir(directory: Path, source: str) -> list[SkillMeta]:

@@ -8,7 +8,7 @@ from kai import Tool
 
 from kcastle.skills import SkillManager
 from kcastle.tools.core import create_core_tools
-from kcastle.tools.skills import create_skill_lifecycle_tools
+from kcastle.tools.skills import create_skill_tools
 
 
 def create_builtin_tools(*, workspace: Path, skill_manager: SkillManager) -> list[Tool]:
@@ -16,11 +16,11 @@ def create_builtin_tools(*, workspace: Path, skill_manager: SkillManager) -> lis
 
     Includes:
     - Core coding tools (file/search/bash)
-    - Skill lifecycle tools (list/create/update)
+    - Skill discovery tools (skills.list)
     """
     tools: list[Tool] = []
     tools.extend(create_core_tools(workspace=workspace))
-    tools.extend(create_skill_lifecycle_tools(manager=skill_manager))
+    tools.extend(create_skill_tools(manager=skill_manager))
     return tools
 
 

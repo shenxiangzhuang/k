@@ -29,9 +29,7 @@ async def test_builtin_toolset_contains_core_and_skill_tools(tmp_path: Path) -> 
     assert "write_file" in names
     assert "edit_file" in names
     assert "run_bash" in names
-    assert "create_skill" in names
-    assert "update_skill" in names
-    assert "list_skills" in names
+    assert "skills.list" in names
 
 
 @pytest.mark.asyncio
@@ -66,47 +64,27 @@ async def test_core_file_tools_roundtrip(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_create_skill_tool_creates_skill_files(tmp_path: Path) -> None:
+async def test_skills_list_tool_lists_discovered_skills(tmp_path: Path) -> None:
     user_dir = tmp_path / "user"
-    project_dir = tmp_path / "project"
-    manager = SkillManager(user_skills_dir=user_dir, project_skills_dir=project_dir)
-    manager.discover()
-
-    tools = _tool_map(create_builtin_tools(workspace=tmp_path, skill_manager=manager))
-    create_tool = tools["create_skill"]
-
-    result = await create_tool.execute(
-        cast(Any, create_tool).Params(
-            skill_id="my-skill",
-            description="demo",
-            instructions="# My Skill\n\nDo x.",
-        )
+    skill_dir = user_dir / "demo-skill"
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: demo-skill\ndescription: Demo skill for listing\n---\n\n# demo\n",
+        encoding="utf-8",
     )
-    assert not result.is_error
-    assert (user_dir / "my-skill" / "SKILL.md").is_file()
-    assert not (project_dir / "my-skill" / "SKILL.md").exists()
 
-
-@pytest.mark.asyncio
-async def test_create_skill_tool_rejects_project_target(tmp_path: Path) -> None:
     manager = SkillManager(
-        user_skills_dir=tmp_path / "user",
+        user_skills_dir=user_dir,
         project_skills_dir=tmp_path / "project",
     )
     manager.discover()
 
     tools = _tool_map(create_builtin_tools(workspace=tmp_path, skill_manager=manager))
-    create_tool = tools["create_skill"]
+    list_tool = tools["skills.list"]
 
-    result = await create_tool.execute(
-        cast(Any, create_tool).Params(
-            skill_id="my-skill",
-            description="demo",
-            instructions="# My Skill\n\nDo x.",
-            target="project",
-        )
-    )
-    assert result.is_error
+    result = await list_tool.execute(cast(Any, list_tool).Params(query="demo", max_results=10))
+    assert not result.is_error
+    assert "demo-skill" in result.output
 
 
 def test_builtin_skills_are_discoverable() -> None:

@@ -304,7 +304,8 @@ class TelegramChannel:
         # Run agent and collect events
         collected_events: list[Any] = []
         try:
-            async for event in session.run(message_text):
+            prepared_input = self._castle.prepare_user_input(message_text)
+            async for event in session.run(prepared_input):
                 collected_events.append(event)
         except Exception as e:
             _log.exception("Error in session %s", sid)
