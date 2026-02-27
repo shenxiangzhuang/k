@@ -1,4 +1,4 @@
-"""Built-in skill lifecycle tools."""
+"""Built-in skill tools."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ class _SkillTool(Tool):
 
 
 class ListSkillsTool(_SkillTool):
-    name: str = "list_skills"
+    name: str = "skills.list"
     description: str = "List discovered skills across builtin, user, and project layers."
 
     class Params(BaseModel):
@@ -42,72 +42,6 @@ class ListSkillsTool(_SkillTool):
         return ToolResult(output="\n".join(rows) if rows else "(no skills)")
 
 
-class CreateSkillTool(_SkillTool):
-    name: str = "create_skill"
-    description: str = "Create a new anthropics-style skill with SKILL.md frontmatter."
-
-    class Params(BaseModel):
-        skill_id: str = Field(description="Unique skill ID (directory name).")
-        name: str | None = Field(default=None, description="Skill name in frontmatter.")
-        description: str = Field(description="When to use this skill (frontmatter description).")
-        tags: list[str] = Field(default_factory=list, description="Skill tags.")
-        instructions: str = Field(default="", description="Markdown instruction body.")
-        target: str = Field(
-            default="user",
-            description="Target layer. Agent-managed skills use user.",
-        )
-
-    async def execute(self, params: CreateSkillTool.Params) -> ToolResult:
-        try:
-            if params.target != "user":
-                return ToolResult.error("Agent-managed skill creation only supports target='user'")
-            meta = self._manager.create_skill(
-                params.skill_id,
-                name=params.name,
-                description=params.description,
-                tags=params.tags,
-                instructions=params.instructions,
-                target=params.target,
-            )
-            return ToolResult(output=f"Created skill {meta.id} at {meta.file_path}")
-        except Exception as e:
-            return ToolResult.error(str(e))
-
-
-class UpdateSkillTool(_SkillTool):
-    name: str = "update_skill"
-    description: str = "Update an existing skill's frontmatter or instruction body."
-
-    class Params(BaseModel):
-        skill_id: str = Field(description="Skill ID to update.")
-        name: str | None = Field(default=None, description="New skill name.")
-        description: str | None = Field(default=None, description="New description.")
-        tags: list[str] | None = Field(default=None, description="New tags list.")
-        instructions: str | None = Field(default=None, description="Replace instruction body.")
-        append_instructions: str | None = Field(
-            default=None,
-            description="Append extra instructions to body.",
-        )
-
-    async def execute(self, params: UpdateSkillTool.Params) -> ToolResult:
-        try:
-            meta = self._manager.update_skill(
-                params.skill_id,
-                name=params.name,
-                description=params.description,
-                tags=params.tags,
-                instructions=params.instructions,
-                append_instructions=params.append_instructions,
-            )
-            return ToolResult(output=f"Updated skill {meta.id}")
-        except Exception as e:
-            return ToolResult.error(str(e))
-
-
-def create_skill_lifecycle_tools(*, manager: SkillManager) -> list[Tool]:
-    """Create built-in skill lifecycle tools."""
-    return [
-        ListSkillsTool.for_manager(manager),
-        CreateSkillTool.for_manager(manager),
-        UpdateSkillTool.for_manager(manager),
-    ]
+def create_skill_tools(*, manager: SkillManager) -> list[Tool]:
+    """Create built-in read-only skill tools."""
+    return [ListSkillsTool.for_manager(manager)]

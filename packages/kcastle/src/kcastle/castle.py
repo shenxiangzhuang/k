@@ -21,6 +21,7 @@ from kcastle.channels.telegram import TelegramChannel
 from kcastle.config import CastleConfig, load_config
 from kcastle.session.manager import SessionManager
 from kcastle.skills.manager import SkillManager, find_project_root
+from kcastle.skills.view import extract_skill_hints, render_compact_skills, render_expanded_skills
 from kcastle.tools import create_builtin_tools
 
 _log = logging.getLogger("kcastle")
@@ -163,6 +164,29 @@ class Castle:
             return self._session_models[session_id]
         return (self._active_provider_name, self._active_model)
 
+    def prepare_user_input(self, user_input: str) -> str:
+        """Augment user input with explicitly hinted skill instructions.
+
+        Bub-style progressive disclosure:
+        - compact skill metadata is always present in system prompt
+        - full skill body is injected only when user references ``$skill-id``
+        """
+        hints = extract_skill_hints(user_input)
+        if not hints:
+            return user_input
+
+        expanded: list[Any] = []
+        for hint in hints:
+            meta = self._skill_manager.get_skill(hint)
+            if meta is None:
+                continue
+            expanded.append(meta)
+
+        expansion_block = render_expanded_skills(expanded)
+        if not expansion_block:
+            return user_input
+        return f"{user_input}\n\n{expansion_block}"
+
     def _build_provider(self, provider_name: str, model_id: str) -> object:
         """Validate and build a provider instance for ``provider_name/model_id``."""
         from dataclasses import replace
@@ -282,15 +306,11 @@ class Castle:
         provider = _create_provider(config)
 
         all_skills = skill_manager.all_skills()
-        loaded_skills = skill_manager.load_skills([s.id for s in all_skills])
-        skill_tools = skill_manager.collect_tools(loaded_skills)
-        skill_tools.extend(
-            create_builtin_tools(
-                workspace=Path.cwd(),
-                skill_manager=skill_manager,
-            )
+        skill_tools = create_builtin_tools(
+            workspace=Path.cwd(),
+            skill_manager=skill_manager,
         )
-        skill_prompts = skill_manager.collect_prompts(loaded_skills)
+        skill_prompts = render_compact_skills(all_skills)
 
         system_prompt = _build_system_prompt(config, skill_prompts)
 
