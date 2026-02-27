@@ -21,6 +21,7 @@ from kcastle.channels.telegram import TelegramChannel
 from kcastle.config import CastleConfig, load_config
 from kcastle.session.manager import SessionManager
 from kcastle.skills.manager import SkillManager, find_project_root
+from kcastle.tools import create_builtin_tools
 
 _log = logging.getLogger("kcastle")
 
@@ -272,7 +273,8 @@ class Castle:
         project_skills = project_root / ".skills"
         skill_manager = SkillManager(
             user_skills_dir=config.skills_dir,
-            project_skills_dir=project_skills if project_skills.is_dir() else None,
+            project_skills_dir=project_skills,
+            builtin_skills_dir=Path(__file__).resolve().parent / "builtin_skills",
         )
         skill_manager.discover()
 
@@ -282,6 +284,12 @@ class Castle:
         all_skills = skill_manager.all_skills()
         loaded_skills = skill_manager.load_skills([s.id for s in all_skills])
         skill_tools = skill_manager.collect_tools(loaded_skills)
+        skill_tools.extend(
+            create_builtin_tools(
+                workspace=Path.cwd(),
+                skill_manager=skill_manager,
+            )
+        )
         skill_prompts = skill_manager.collect_prompts(loaded_skills)
 
         system_prompt = _build_system_prompt(config, skill_prompts)
