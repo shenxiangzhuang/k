@@ -71,7 +71,86 @@ async def stream(
                 case DoneEvent(message=msg):
                     print(f"\\nDone. Tokens: {msg.usage}")
     """
-    return _stream_impl(provider, context, **kwargs)
+    msg_count = len(context.messages) if context.messages else 0
+    tool_count = len(context.tools) if context.tools else 0
+    logger.debug(
+        "LLM stream start: provider=%s model=%s messages=%d tools=%d",
+        provider.name,
+        provider.model,
+        msg_count,
+        tool_count,
+    )
+    t0 = time.perf_counter()
+
+    state = _StreamState()
+
+    yield StartEvent()
+
+    try:
+        async for chunk in provider.stream_raw(context, **kwargs):
+            for event in state.process_chunk(chunk):
+                yield event
+    except ProviderError as e:
+        duration_ms = (time.perf_counter() - t0) * 1000
+        logger.error(
+            "LLM stream error: provider=%s model=%s error=%s duration=%.0fms",
+            provider.name,
+            provider.model,
+            e,
+            duration_ms,
+        )
+        yield ErrorEvent(error=e, partial=state.build_partial())
+        return
+    except Exception as e:
+        # Intentional recovery boundary:
+        # unknown provider exceptions are converted into ErrorEvent so callers
+        # receive a unified stream contract instead of raised exceptions.
+        duration_ms = (time.perf_counter() - t0) * 1000
+        logger.exception(
+            "LLM stream error (unexpected): provider=%s model=%s error=%s duration=%.0fms",
+            provider.name,
+            provider.model,
+            e,
+            duration_ms,
+        )
+        yield ErrorEvent(error=e, partial=state.build_partial())
+        return
+
+    # Flush any pending block
+    for event in state.flush_pending():
+        yield event
+
+    # Determine stop reason
+    stop_reason = "tool_use" if state.tool_calls else "stop"
+    final = state.build_final(stop_reason=stop_reason)
+
+    if not final.content and not final.tool_calls:
+        duration_ms = (time.perf_counter() - t0) * 1000
+        logger.error(
+            "LLM stream empty response: provider=%s model=%s duration=%.0fms",
+            provider.name,
+            provider.model,
+            duration_ms,
+        )
+        yield ErrorEvent(
+            error=EmptyResponseError("The provider returned an empty response."),
+            partial=final,
+        )
+        return
+
+    duration_ms = (time.perf_counter() - t0) * 1000
+    usage = final.usage
+    logger.info(
+        "LLM stream complete: provider=%s model=%s in=%d out=%d stop=%s duration=%.0fms",
+        provider.name,
+        provider.model,
+        usage.input_tokens if usage else 0,
+        usage.output_tokens if usage else 0,
+        stop_reason,
+        duration_ms,
+    )
+
+    yield DoneEvent(message=final)
 
 
 async def complete(
@@ -96,7 +175,7 @@ async def complete(
         ProviderError: If the provider encounters an error.
         EmptyResponseError: If the provider returns no content.
     """
-    async for event in _stream_impl(provider, context, **kwargs):
+    async for event in stream(provider, context, **kwargs):
         match event:
             case DoneEvent(message=message):
                 return message
@@ -365,90 +444,3 @@ class _StreamState:
             self._tool_args = ""
 
         return events
-
-
-async def _stream_impl(
-    provider: Provider,
-    context: Context,
-    **kwargs: Any,
-) -> AsyncIterator[StreamEvent]:
-    msg_count = len(context.messages) if context.messages else 0
-    tool_count = len(context.tools) if context.tools else 0
-    logger.debug(
-        "LLM stream start: provider=%s model=%s messages=%d tools=%d",
-        provider.name,
-        provider.model,
-        msg_count,
-        tool_count,
-    )
-    t0 = time.perf_counter()
-
-    state = _StreamState()
-
-    yield StartEvent()
-
-    try:
-        async for chunk in provider.stream_raw(context, **kwargs):
-            for event in state.process_chunk(chunk):
-                yield event
-    except ProviderError as e:
-        duration_ms = (time.perf_counter() - t0) * 1000
-        logger.error(
-            "LLM stream error: provider=%s model=%s error=%s duration=%.0fms",
-            provider.name,
-            provider.model,
-            e,
-            duration_ms,
-        )
-        yield ErrorEvent(error=e, partial=state.build_partial())
-        return
-    except Exception as e:
-        # Intentional recovery boundary:
-        # unknown provider exceptions are converted into ErrorEvent so callers
-        # receive a unified stream contract instead of raised exceptions.
-        duration_ms = (time.perf_counter() - t0) * 1000
-        logger.exception(
-            "LLM stream error (unexpected): provider=%s model=%s error=%s duration=%.0fms",
-            provider.name,
-            provider.model,
-            e,
-            duration_ms,
-        )
-        yield ErrorEvent(error=e, partial=state.build_partial())
-        return
-
-    # Flush any pending block
-    for event in state.flush_pending():
-        yield event
-
-    # Determine stop reason
-    stop_reason = "tool_use" if state.tool_calls else "stop"
-    final = state.build_final(stop_reason=stop_reason)
-
-    if not final.content and not final.tool_calls:
-        duration_ms = (time.perf_counter() - t0) * 1000
-        logger.error(
-            "LLM stream empty response: provider=%s model=%s duration=%.0fms",
-            provider.name,
-            provider.model,
-            duration_ms,
-        )
-        yield ErrorEvent(
-            error=EmptyResponseError("The provider returned an empty response."),
-            partial=final,
-        )
-        return
-
-    duration_ms = (time.perf_counter() - t0) * 1000
-    usage = final.usage
-    logger.info(
-        "LLM stream complete: provider=%s model=%s in=%d out=%d stop=%s duration=%.0fms",
-        provider.name,
-        provider.model,
-        usage.input_tokens if usage else 0,
-        usage.output_tokens if usage else 0,
-        stop_reason,
-        duration_ms,
-    )
-
-    yield DoneEvent(message=final)

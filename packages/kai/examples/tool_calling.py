@@ -150,7 +150,7 @@ async def example_stream() -> None:
 
     # Stream with tool call events
     tool_results: list[Message] = []
-    async for event in await stream(provider, Context(messages=messages, tools=TOOLS)):
+    async for event in stream(provider, Context(messages=messages, tools=TOOLS)):
         match event:
             case StartEvent():
                 pass
@@ -177,7 +177,7 @@ async def example_stream() -> None:
 
     # If tool calls were made, send results back
     if tool_results:
-        async for event in await stream(provider, Context(messages=messages, tools=TOOLS)):
+        async for event in stream(provider, Context(messages=messages, tools=TOOLS)):
             match event:
                 case StartEvent():
                     pass

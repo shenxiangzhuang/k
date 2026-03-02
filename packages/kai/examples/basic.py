@@ -67,7 +67,7 @@ async def example_stream() -> None:
         messages=[Message(role="user", content="Tell me a short joke.")],
     )
 
-    async for event in await stream(provider, context):
+    async for event in stream(provider, context):
         match event:
             case TextDeltaEvent(delta=text):
                 print(text, end="", flush=True)
