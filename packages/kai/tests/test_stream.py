@@ -97,7 +97,7 @@ class TestStreamTextOnly:
             UsageChunk(usage=TokenUsage(input_tokens=10, output_tokens=5)),
         ]
         provider = MockProvider(chunks)
-        events = await _collect(await stream(provider, _context()))
+        events = await _collect(stream(provider, _context()))
 
         # StartEvent, TextStartEvent, TextDeltaEvent x2, TextEndEvent, DoneEvent
         assert isinstance(events[0], StartEvent)
@@ -124,7 +124,7 @@ class TestStreamTextOnly:
     async def test_partial_message_in_events(self) -> None:
         chunks = [TextChunk(text="Hi")]
         provider = MockProvider(chunks)
-        events = await _collect(await stream(provider, _context()))
+        events = await _collect(stream(provider, _context()))
 
         text_delta = next(e for e in events if isinstance(e, TextDeltaEvent))
         # partial should contain the text accumulated so far
@@ -140,7 +140,7 @@ class TestStreamThinking:
             TextChunk(text="Answer"),
         ]
         provider = MockProvider(chunks)
-        events = await _collect(await stream(provider, _context()))
+        events = await _collect(stream(provider, _context()))
 
         think_starts = [e for e in events if isinstance(e, ThinkStartEvent)]
         assert len(think_starts) == 1
@@ -171,7 +171,7 @@ class TestStreamToolCalls:
             UsageChunk(usage=TokenUsage(input_tokens=20, output_tokens=10)),
         ]
         provider = MockProvider(chunks)
-        events = await _collect(await stream(provider, _context()))
+        events = await _collect(stream(provider, _context()))
 
         tc_starts = [e for e in events if isinstance(e, ToolCallStartEvent)]
         assert len(tc_starts) == 1
@@ -194,7 +194,7 @@ class TestStreamToolCalls:
             ToolCallEnd(),
         ]
         provider = MockProvider(chunks)
-        events = await _collect(await stream(provider, _context()))
+        events = await _collect(stream(provider, _context()))
 
         # Text should end before tool call starts
         text_end_idx = next(i for i, e in enumerate(events) if isinstance(e, TextEndEvent))
@@ -220,7 +220,7 @@ class TestStreamToolCalls:
             ToolCallEnd(),
         ]
         provider = MockProvider(chunks)
-        events = await _collect(await stream(provider, _context()))
+        events = await _collect(stream(provider, _context()))
 
         tc_starts = [e for e in events if isinstance(e, ToolCallStartEvent)]
         assert len(tc_starts) == 3
@@ -250,7 +250,7 @@ class TestStreamToolCalls:
             ToolCallEnd(),
         ]
         provider = MockProvider(chunks)
-        events = await _collect(await stream(provider, _context()))
+        events = await _collect(stream(provider, _context()))
 
         tc_events = [e for e in events if isinstance(e, ToolCallStartEvent | ToolCallEndEvent)]
         assert len(tc_events) == 4
@@ -271,7 +271,7 @@ class TestStreamToolCalls:
             ToolCallEnd(),
         ]
         provider = MockProvider(chunks)
-        events = await _collect(await stream(provider, _context()))
+        events = await _collect(stream(provider, _context()))
 
         text_end_idx = next(i for i, e in enumerate(events) if isinstance(e, TextEndEvent))
         first_tc_start_idx = next(
@@ -288,7 +288,7 @@ class TestStreamToolCalls:
 class TestStreamErrors:
     async def test_provider_error_yields_error_event(self) -> None:
         provider = ErrorProvider(ProviderError("API down"))
-        events = await _collect(await stream(provider, _context()))
+        events = await _collect(stream(provider, _context()))
 
         assert isinstance(events[0], StartEvent)
         error_events = [e for e in events if isinstance(e, ErrorEvent)]
@@ -297,7 +297,7 @@ class TestStreamErrors:
 
     async def test_empty_response_yields_error(self) -> None:
         provider = MockProvider([])  # No chunks at all
-        events = await _collect(await stream(provider, _context()))
+        events = await _collect(stream(provider, _context()))
 
         error_events = [e for e in events if isinstance(e, ErrorEvent)]
         assert len(error_events) == 1

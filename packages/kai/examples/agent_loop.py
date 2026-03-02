@@ -139,7 +139,7 @@ async def stream_round(
     text_buffer = ""
     think_buffer = ""
 
-    async for event in await stream(provider, Context(messages=messages, tools=TOOLS)):
+    async for event in stream(provider, Context(messages=messages, tools=TOOLS)):
         match event:
             case StartEvent():
                 pass

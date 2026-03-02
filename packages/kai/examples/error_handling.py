@@ -58,7 +58,7 @@ async def example_stream_error_handling() -> None:
         messages=[Message(role="user", content="Hello")],
     )
 
-    async for event in await stream(provider, context):
+    async for event in stream(provider, context):
         match event:
             case ErrorEvent(error=error):
                 print(f"Stream error: {error}")

@@ -93,7 +93,7 @@ async def agent_step(
     # Stream LLM response
     llm_t0 = time.perf_counter()
     assistant_msg: Message | None = None
-    async for stream_event in await stream(provider, context):
+    async for stream_event in stream(provider, context):
         yield StreamChunk(event=stream_event)
 
         match stream_event:
