@@ -108,6 +108,24 @@ class TestAgentState:
         agent = Agent(provider=provider)
         assert agent.is_running is False
 
+    def test_provider_setter_is_alias_for_replace(self) -> None:
+        provider1 = MockProvider([])
+        provider2 = MockProvider([])
+        agent = Agent(provider=provider1)
+
+        agent.provider = provider2
+
+        assert agent.provider is provider2
+
+    def test_provider_setter_raises_when_running(self) -> None:
+        provider1 = MockProvider([])
+        provider2 = MockProvider([])
+        agent = Agent(provider=provider1)
+        agent._running = True  # pyright: ignore[reportPrivateUsage]
+
+        with pytest.raises(RuntimeError, match="Cannot replace provider while agent is running"):
+            agent.provider = provider2
+
 
 class TestAgentFollowUp:
     @pytest.mark.asyncio

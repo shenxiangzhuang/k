@@ -100,6 +100,16 @@ class Agent:
         return self._state
 
     @property
+    def provider(self) -> Provider:
+        """Current LLM provider used by this agent."""
+        return self._provider
+
+    @provider.setter
+    def provider(self, provider: Provider) -> None:
+        """Thin alias for ``replace_provider()``."""
+        self.replace_provider(provider)
+
+    @property
     def is_running(self) -> bool:
         """Whether the agent is currently executing."""
         return self._running
@@ -159,6 +169,31 @@ class Agent:
         """Cancel the current run."""
         if self._abort_event is not None:
             self._abort_event.set()
+
+    def replace_provider(self, provider: Provider) -> None:
+        """Replace the current LLM provider.
+
+        Raises:
+            RuntimeError: If called while the agent is running.
+        """
+        old_provider = self._provider
+        old_name = old_provider.name
+        old_model = old_provider.model
+        new_name = provider.name
+        new_model = provider.model
+
+        if self._running:
+            _log.warning(
+                "replace_provider rejected while running: %s/%s -> %s/%s",
+                old_name,
+                old_model,
+                new_name,
+                new_model,
+            )
+            raise RuntimeError("Cannot replace provider while agent is running")
+
+        self._provider = provider
+        _log.info("Provider replaced: %s/%s -> %s/%s", old_name, old_model, new_name, new_model)
 
     async def _run_loop(self) -> AsyncIterator[AgentEvent]:
         """Run the agent loop with steering and follow-up support."""

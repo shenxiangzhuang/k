@@ -103,8 +103,8 @@ def test_switch_model_only_affects_target_session(
 
     castle.switch_model("mock", "model-b", session_id="s1")
 
-    assert s1.agent._provider.model == "model-b"  # pyright: ignore[reportPrivateUsage, reportAttributeAccessIssue]
-    assert s2.agent._provider.model == "model-a"  # pyright: ignore[reportPrivateUsage, reportAttributeAccessIssue]
+    assert s1.agent.provider.model == "model-b"
+    assert s2.agent.provider.model == "model-a"
     assert castle.get_active_model("s1") == ("mock", "model-b")
     assert castle.get_active_model("s2") == ("mock", "model-a")
 

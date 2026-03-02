@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from kagent import Agent, Trace
-from kai import Tool
+from kai import Provider, Tool
 
 from kcastle.channels import Channel
 from kcastle.channels.cli import CLIChannel
@@ -25,7 +25,7 @@ from kcastle.skills.skill import Skill
 from kcastle.tools import create_builtin_tools
 
 
-def _create_provider(config: CastleConfig) -> object:
+def _create_provider(config: CastleConfig) -> Provider:
     """Create a kai Provider from the active provider config.
 
     Looks up ``config.active_provider()``, selects the kai driver class
@@ -97,7 +97,7 @@ class Castle:
         session_manager: SessionManager,
         skill_manager: SkillManager,
         channels: list[Channel],
-        provider: object,
+        provider: Provider,
         system_prompt: str,
         skill_tools: list[Tool],
     ) -> None:
@@ -165,7 +165,7 @@ class Castle:
             return user_input
         return f"{user_input}\n\n{expansion_block}"
 
-    def _build_provider(self, provider_name: str, model_id: str) -> object:
+    def _build_provider(self, provider_name: str, model_id: str) -> Provider:
         """Validate and build a provider instance for ``provider_name/model_id``."""
         from dataclasses import replace
 
@@ -183,12 +183,12 @@ class Castle:
         )
         return _create_provider(new_config)
 
-    def _apply_provider_to_session(self, session_id: str, provider: object) -> None:
+    def _apply_provider_to_session(self, session_id: str, provider: Provider) -> None:
         """Hot-swap provider for one loaded session."""
         session = self._session_manager.get(session_id)
         if session is None:
             raise KeyError(f"Session {session_id!r} is not loaded")
-        session._agent._provider = provider  # pyright: ignore[reportPrivateUsage, reportAttributeAccessIssue]
+        session.agent.replace_provider(provider)
 
     def available_models(self) -> list[tuple[str, str]]:
         """Return ``(provider_name, model_id)`` pairs for all active models.
@@ -215,11 +215,21 @@ class Castle:
 
         Only updates the specified loaded session.
         """
+        current_provider, current_model = self.get_active_model(session_id)
+        logger.info(
+            "Switching session %s model: %s / %s -> %s / %s",
+            session_id,
+            current_provider,
+            current_model,
+            provider_name,
+            model_id,
+        )
+
         provider = self._build_provider(provider_name, model_id)
         self._apply_provider_to_session(session_id, provider)
         self._session_models[session_id] = (provider_name, model_id)
         logger.info(
-            "Switched session %s to %s / %s",
+            "Switched session %s model to %s / %s",
             session_id,
             provider_name,
             model_id,
@@ -284,7 +294,7 @@ class Castle:
 
         def agent_factory(trace: Trace) -> Agent:
             return Agent(
-                provider=provider,  # type: ignore[arg-type]
+                provider=provider,
                 system=system_prompt,
                 tools=skill_tools if skill_tools else None,
                 trace=trace,
