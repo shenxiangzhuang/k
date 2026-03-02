@@ -77,7 +77,7 @@ def _check_daemon_config(home: Path) -> str | None:
 
     try:
         config = load_config(home=home)
-    except Exception as exc:
+    except (OSError, ValueError, TypeError, KeyError) as exc:
         return f"Invalid configuration: {exc}"
 
     try:

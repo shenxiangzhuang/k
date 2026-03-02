@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -21,6 +21,7 @@ from kcastle.log import logger
 from kcastle.session.store import SessionTraceStore
 
 META_FILENAME = "meta.json"
+type AgentFactory = Callable[[Trace], Agent]
 
 
 @dataclass(slots=True)
@@ -33,6 +34,8 @@ class SessionMeta:
     created_at_iso: str
     last_active_at: int  # ms timestamp
     last_active_at_iso: str
+    provider_name: str | None = None
+    model_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -46,6 +49,8 @@ class SessionMeta:
             created_at_iso=str(d.get("created_at_iso", "")),
             last_active_at=int(d.get("last_active_at", d["created_at"])),
             last_active_at_iso=str(d.get("last_active_at_iso", d.get("created_at_iso", ""))),
+            provider_name=(str(v) if (v := d.get("provider_name")) else None),
+            model_id=(str(v) if (v := d.get("model_id")) else None),
         )
 
 
@@ -126,6 +131,17 @@ class Session:
     def is_running(self) -> bool:
         return self._running
 
+    @property
+    def model_override(self) -> tuple[str, str] | None:
+        if not self._meta.provider_name or not self._meta.model_id:
+            return None
+        return (self._meta.provider_name, self._meta.model_id)
+
+    def set_model_override(self, provider_name: str, model_id: str) -> None:
+        self._meta.provider_name = provider_name
+        self._meta.model_id = model_id
+        _save_meta(self._session_dir, self._meta)
+
     async def run(self, user_input: str) -> AsyncIterator[AgentEvent]:
         """Run the agent with user input, streaming events.
 
@@ -163,7 +179,7 @@ class Session:
         session_dir: Path,
         session_id: str,
         name: str,
-        agent_factory: Any,  # Callable[[Trace], Agent]
+        agent_factory: AgentFactory,
     ) -> Session:
         """Create a brand-new session with a fresh trace."""
         session_dir.mkdir(parents=True, exist_ok=True)
@@ -200,7 +216,7 @@ class Session:
         cls,
         *,
         session_dir: Path,
-        agent_factory: Any,  # Callable[[Trace], Agent]
+        agent_factory: AgentFactory,
     ) -> Session:
         """Resume a session from disk (reload trace + rebuild agent)."""
         meta = _load_meta(session_dir)

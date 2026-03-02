@@ -124,3 +124,27 @@ def test_switch_model_raises_for_unloaded_session(
 
     with pytest.raises(KeyError, match="not loaded"):
         castle.switch_model("mock", "model-b", session_id="missing")
+
+
+def test_switch_model_persists_across_resume(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    castle = _make_castle(tmp_path)
+
+    import kcastle.castle as castle_module
+
+    def _fake_create_provider(config: CastleConfig) -> object:
+        return DummyProvider(name=config.default_provider, model=config.default_model)
+
+    monkeypatch.setattr(castle_module, "_create_provider", _fake_create_provider)
+
+    castle.session_manager.create(session_id="s1")
+    castle.switch_model("mock", "model-b", session_id="s1")
+    castle.session_manager.suspend("s1")
+
+    castle2 = _make_castle(tmp_path)
+    s1_resumed = castle2.session_manager.get_or_create("s1")
+
+    assert castle2.get_active_model("s1") == ("mock", "model-b")
+    assert s1_resumed.agent.provider.model == "model-b"

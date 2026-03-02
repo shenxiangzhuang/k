@@ -138,8 +138,25 @@ class Castle:
         If ``session_id`` has an override, returns that override; otherwise
         returns the global default runtime model.
         """
-        if session_id is not None and session_id in self._session_models:
-            return self._session_models[session_id]
+        if session_id is not None:
+            if session_id in self._session_models:
+                return self._session_models[session_id]
+
+            loaded = self._session_manager.get(session_id)
+            if loaded is not None and loaded.model_override is not None:
+                override = loaded.model_override
+                self._session_models[session_id] = override
+                try:
+                    loaded.agent.replace_provider(self._build_provider(*override))
+                except (ValueError, RuntimeError):
+                    logger.warning(
+                        "Failed to restore session %s model override %s / %s",
+                        session_id,
+                        override[0],
+                        override[1],
+                    )
+                return override
+
         return (self._active_provider_name, self._active_model)
 
     def prepare_user_input(self, user_input: str) -> str:
@@ -227,6 +244,10 @@ class Castle:
 
         provider = self._build_provider(provider_name, model_id)
         self._apply_provider_to_session(session_id, provider)
+        session = self._session_manager.get(session_id)
+        if session is None:
+            raise KeyError(f"Session {session_id!r} is not loaded")
+        session.set_model_override(provider_name, model_id)
         self._session_models[session_id] = (provider_name, model_id)
         logger.info(
             "Switched session %s model to %s / %s",
@@ -347,7 +368,7 @@ class Castle:
         for ch in self._channels:
             try:
                 await ch.stop()
-            except Exception:
+            except (RuntimeError, OSError, ValueError, KeyError):
                 logger.exception("Error stopping channel %s", ch.name)
 
         self._session_manager.suspend_all()
