@@ -1,106 +1,63 @@
 ---
 name: skill-creator
-description: Create new skills and iteratively improve existing skills in SKILL.md format when users ask to automate repeated workflows, add reusable capabilities, or tune skill triggering behavior.
+description: Create and evolve skills end-to-end when users ask to build a new skill, refactor an existing skill, add eval loops, or improve trigger accuracy via description tuning.
 ---
 
 # skill-creator
 
-Use this skill when the user asks to create, modify, optimize, or evaluate a skill.
+Use this skill when the user asks to create, modify, optimize, benchmark, or operationalize a skill.
+
+This is a core meta-skill. Prefer reusable structure over one-off edits.
 
 ## Operating rules
 
-- Discover candidate skills via `skills_list`; perform edits via file tools (`write_file`, `edit_file`).
-- Keep responses concise; avoid dumping long file contents unless explicitly requested.
-- Every skill must be `<skill-folder>/SKILL.md` with valid frontmatter (`name`, `description`).
-- Agent-created skills must be managed under `~/.kcastle/skills`.
-- Use one folder per skill: `~/.kcastle/skills/<skill-folder>/SKILL.md`.
-- A skill folder may also include `scripts/` for reusable helper scripts.
-- Use a stable, unique skill `name` in frontmatter.
-- New or updated skills should be prepared as file edits and confirmed with the user before write.
-- Treat project scope (`.skills`) as user-managed unless user explicitly asks for direct edits.
-- Prioritize clear intent and trigger conditions in `description`; avoid vague wording.
+- Keep output concise and operational; avoid dumping long docs unless requested.
+- Skill files must use `<skill-folder>/SKILL.md` with frontmatter `name` and `description`.
+- Use stable lowercase-hyphen `name` values (`^[a-z0-9-]{1,64}$`) unless user explicitly overrides.
+- Prefer user scope for agent-created skills: `~/.kcastle/skills/<skill-folder>/`.
+- Treat project scope (`.skills`) as user-managed unless the user explicitly requests direct edits.
+- Use bundled `scripts/` for repetitive deterministic tasks instead of repeating shell steps in prompts.
+- Preserve existing intent during edits; prefer targeted patches over full rewrites.
+
+## File map (read on demand)
+
+| File | When to read |
+|---|---|
+| `references/workflow.md` | Creating or updating a skill |
+| `references/evals.md` | Designing and running eval prompts |
+| `references/description-optimization.md` | Tuning `description` for keyword matching |
+| `references/templates.md` | Need JSON/markdown structure to produce |
+
+Read only the file relevant to the current step.
 
 ## Workflow
 
-### 1) Capture intent
+1. **Intake**: Read `references/workflow.md`, follow the "Intake checklist" section.
+2. **Author**: Draft or patch the skill per "Authoring rules" in the same file.
+3. **Eval design**: Read `references/evals.md`, follow "Design evals" to write test prompts.
+4. **Eval execution**: Follow "Run and review" in the same file to execute and grade.
+5. **Trigger tuning**: Read `references/description-optimization.md` to improve keyword coverage.
+6. **Iterate** until quality stabilizes or the user is satisfied.
 
-Before writing, clarify:
+## Self-evolution policy
 
-1. What capability should the skill enable?
-2. In what user contexts should it trigger?
-3. What outputs/artifacts should the skill produce?
-4. Are there constraints (tooling, format, style, safety, scope)?
+When improving this `skill-creator` skill itself:
 
-If the conversation already contains these details, summarize assumptions and ask for confirmation.
-
-### 2) Draft or update the skill
-
-When creating:
-
-1. Choose a stable skill `name`.
-2. Write frontmatter:
-	- `name`: exact skill name used for lookup
-	- `description`: what it does + when to trigger (be specific and slightly proactive)
-3. Write body instructions in imperative style.
-
-When updating:
-
-- Preserve user intent and existing useful structure.
-- Prefer targeted edits over full rewrites unless the current version is fundamentally broken.
-- Explain key changes briefly.
-
-### 3) Include practical guidance in SKILL.md
-
-The body should usually contain:
-
-- Trigger interpretation guidance
-- Step-by-step execution flow
-- Output format expectations
-- Edge cases / fallback behavior
-
-Keep SKILL.md focused and operational. If content grows too large, split details into referenced companion files.
-
-Recommended skill layout:
-
-- `<skill-folder>/SKILL.md` (required)
-- `<skill-folder>/scripts/` (optional, executable helpers)
-
-If `scripts/` is present, reference script names and expected inputs/outputs in SKILL.md so execution is predictable.
-
-### 4) Create lightweight eval prompts
-
-After drafting, propose 2-3 realistic prompts to validate behavior.
-
-- For objective tasks, include expected checks (structure, fields, transformations).
-- For subjective tasks, focus on qualitative review criteria.
-
-Use results to identify missing instructions, over-constraints, or ambiguous triggers.
-
-### 5) Iterate
-
-After feedback:
-
-1. Generalize from failures (avoid overfitting to one example).
-2. Remove instructions that add complexity without improving outcomes.
-3. Strengthen rationale-oriented wording (explain why, not just rigid rules).
-4. Update the skill and re-test with revised prompts.
-
-Repeat until the user is satisfied or changes stop producing meaningful gains.
+1. Keep orchestration in `SKILL.md` and move heavy detail into `references/`.
+2. Add or refine templates before adding more prose.
+3. Prefer changes that reduce ambiguity and increase repeatability.
+4. Keep backward compatibility with current kcastle skill loading (`name` is the lookup key).
 
 ## Description optimization
 
-When the user asks to improve triggering:
-
-1. Draft a mixed set of should-trigger and should-not-trigger prompts.
-2. Prefer realistic near-miss negatives over obviously unrelated prompts.
-3. Tighten description wording to improve precision without becoming too narrow.
-4. Show before/after description and explain expected trigger behavior changes.
+Follow `references/description-optimization.md` and keep a clear before/after diff for `description`.
 
 ## Output contract
 
 When finishing a creation/update cycle, report:
 
 - Skill path modified
-- Summary of what changed
-- Suggested test prompts
+- What changed and why
+- Suggested eval prompts
+- Quality risks and next iteration focus
 - Any assumptions or open questions
