@@ -10,13 +10,10 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 from uuid import uuid4
 
 from kcastle.log import logger
-from kcastle.session.session import META_FILENAME, Session, SessionMeta
-
-type AgentFactory = Any  # Callable[[Trace], Agent]
+from kcastle.session.session import META_FILENAME, AgentFactory, Session, SessionMeta
 
 
 @dataclass(frozen=True, slots=True)
