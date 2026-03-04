@@ -56,4 +56,4 @@ include = [
 
 [tool.vulture]
 ignore_names = ["test_*", "Test*"]
-paths = ["packages/*/src"]
+paths = ["packages/kai/src", "packages/kagent/src", "packages/kcastle/src"]

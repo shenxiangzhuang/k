@@ -57,3 +57,8 @@ build:
 clean:
     rm -rf dist .ruff_cache .pytest_cache
     find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+
+# Find unused code with vulture
+vulture:
+    @echo "==> Running vulture"
+    prek run vulture --all-files --hook-stage manual
