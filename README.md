@@ -1,6 +1,10 @@
-# K
+# K in Castle
 
 K is an agent living in a castle.
+
+> [!WARNING]
+> K has not formally entered Castle yet. The project is still in a rapid
+> development stage, and breaking changes may be introduced at any time.
 
 ## Quick Start
 
