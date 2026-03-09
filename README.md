@@ -1,24 +1,26 @@
 # K
 
-Tools for building AI agents in Python.
+K is an agent living in a castle.
+
+## Quick Start
+
+Install as a uv tool:
+
+```bash
+uv tool install kcastle
+```
+
+Then run:
+
+```bash
+kcastle
+```
+
 
 ## Packages
 
-| Package | Description |
-|---------|-------------|
-| **[kai](packages/kai)** | Unified multi-provider LLM API |
-| **[kagent](packages/kagent)** | Agent runtime with tool calling and state management |
-| **[kcastle](packages/kcastle)** | Agent application with multi-endpoint support |
-
-## Development
-
-```bash
-uv sync              # Install all dependencies
-uv run pytest        # Run tests
-uv run ruff check    # Lint
-uv run pyright       # Type check
-```
-
-## License
-
-MIT
+| Package | PyPI | Description |
+|---------|------|-------------|
+| **[kai](packages/kai)** | [![PyPI](https://img.shields.io/pypi/v/kcastle-ai?color=%2334D058&label=pypi%20package)](https://pypi.org/project/kcastle-ai/) | Unified multi-provider LLM API |
+| **[kagent](packages/kagent)** | [![PyPI](https://img.shields.io/pypi/v/kcastle-agent?color=%2334D058&label=pypi%20package)](https://pypi.org/project/kcastle-agent/) | Agent runtime with tool calling and state management |
+| **[kcastle](packages/kcastle)** | [![PyPI](https://img.shields.io/pypi/v/kcastle?color=%2334D058&label=pypi%20package)](https://pypi.org/project/kcastle/) | Agent application with multi-endpoint support |
