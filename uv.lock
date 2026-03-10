@@ -314,7 +314,7 @@ name = "kcastle"
 version = "0.0.1a0"
 source = { editable = "packages/kcastle" }
 dependencies = [
-    { name = "kcastle-agent" },
+    { name = "kcastle-agent", extra = ["otel"] },
     { name = "python-telegram-bot" },
     { name = "pyyaml" },
     { name = "telegramify-markdown" },
@@ -330,7 +330,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "kcastle-agent", editable = "packages/kagent" },
+    { name = "kcastle-agent", extras = ["otel"], editable = "packages/kagent" },
     { name = "python-telegram-bot", specifier = ">=21.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "telegramify-markdown", specifier = ">=0.5.4" },
