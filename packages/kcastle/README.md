@@ -85,3 +85,7 @@ providers:
 			deepseek-reasoner:
 				active: true
 ```
+
+OpenTelemetry hooks are disabled by default. Set `KCASTLE_OTEL_ENABLED=1` to
+enable them, and use `KCASTLE_OTEL_ENDPOINT` to choose the OTLP gRPC endpoint
+for trace export. The default endpoint is `http://localhost:4317`.

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
 
 import pytest
 from kagent import Agent
+from kagent.otel import OTelHooks
 from kai import Context
 from kai.providers import ProviderBase
 from kai.types.stream import StreamEvent
@@ -159,3 +161,81 @@ def test_switch_model_persists_across_resume(
 
     assert castle2.get_active_model("s1") == ("mock", "model-b")
     assert s1_resumed.agent.llm.model == "model-b"
+
+
+def test_build_agent_hooks_returns_none_when_otel_disabled(tmp_path: Path) -> None:
+    config = _build_config(tmp_path)
+
+    assert Castle._build_agent_hooks(config) is None
+
+
+def test_build_agent_hooks_creates_otel_hooks_when_enabled(
+    tmp_path: Path,
+) -> None:
+    config = replace(_build_config(tmp_path), otel_enabled=True)
+
+    hooks = Castle._build_agent_hooks(config)
+
+    assert isinstance(hooks, OTelHooks)
+
+
+def test_configure_otel_returns_none_when_disabled(tmp_path: Path) -> None:
+    config = _build_config(tmp_path)
+
+    assert Castle._configure_otel(config) is None
+
+
+def test_configure_otel_uses_configured_endpoint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = replace(
+        _build_config(tmp_path),
+        otel_enabled=True,
+        otel_endpoint="http://otel.example:4317",
+    )
+    captured: dict[str, object] = {}
+
+    class FakeExporter:
+        def __init__(self, *, endpoint: str, insecure: bool) -> None:
+            captured["endpoint"] = endpoint
+            captured["insecure"] = insecure
+
+    class FakeBatchSpanProcessor:
+        def __init__(self, exporter: object) -> None:
+            captured["exporter"] = exporter
+
+    class FakeProvider:
+        def __init__(self, *, resource: object) -> None:
+            captured["resource"] = resource
+            captured["provider"] = self
+
+        def add_span_processor(self, processor: object) -> None:
+            captured["processor"] = processor
+
+        def shutdown(self) -> None:
+            captured["shutdown"] = True
+
+    monkeypatch.setattr(
+        "kcastle.otel.OTLPSpanExporter",
+        FakeExporter,
+    )
+    monkeypatch.setattr(
+        "kcastle.otel.BatchSpanProcessor",
+        FakeBatchSpanProcessor,
+    )
+    monkeypatch.setattr("kcastle.otel.TracerProvider", FakeProvider)
+    monkeypatch.setattr(
+        "kcastle.otel.Resource.create",
+        staticmethod(lambda attrs: attrs),
+    )
+    monkeypatch.setattr(
+        "kcastle.otel.opentelemetry.trace.set_tracer_provider",
+        lambda provider: captured.setdefault("set_provider", provider),
+    )
+
+    provider = Castle._configure_otel(config)
+
+    assert provider is captured["provider"]
+    assert captured["endpoint"] == "http://otel.example:4317"
+    assert captured["insecure"] is True
