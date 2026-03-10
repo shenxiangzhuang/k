@@ -111,89 +111,95 @@ async def agent_loop(
             on_tool_result=on_tool_result,
         ):
             # --- Hook dispatch on intercepted events ---
-            if isinstance(event, TurnStart):
-                # TurnStart from step means LLM call is about to begin.
-                # on_llm_start already called above.
-                pass
+            match event:
+                case TurnStart():
+                    # TurnStart from step means LLM call is about to begin.
+                    # on_llm_start already called above.
+                    pass
 
-            elif isinstance(event, ToolExecStart):
-                _hooks.on_tool_start(
-                    run_id=run_id,
-                    turn_index=turn_count,
-                    call_id=event.call_id,
-                    tool_name=event.tool_name,
-                    arguments=event.arguments,
-                )
-
-            elif isinstance(event, ToolExecEnd):
-                _hooks.on_tool_end(
-                    run_id=run_id,
-                    turn_index=turn_count,
-                    call_id=event.call_id,
-                    tool_name=event.tool_name,
-                    result=event.result,
-                    duration_ms=event.duration_ms,
-                    is_error=event.is_error,
-                )
-
-            elif isinstance(event, TurnEnd):
-                assistant_msg = event.message
-
-                # LLM end hook
-                _hooks.on_llm_end(
-                    run_id=run_id,
-                    turn_index=turn_count,
-                    message=event.message,
-                    duration_ms=event.llm_duration_ms,
-                )
-
-                # Record in trace
-                state.trace.append(
-                    TraceEntry.assistant(
-                        event.message,
+                case ToolExecStart():
+                    _hooks.on_tool_start(
                         run_id=run_id,
                         turn_index=turn_count,
-                        usage=event.message.usage,
+                        call_id=event.call_id,
+                        tool_name=event.tool_name,
+                        arguments=event.arguments,
                     )
-                )
-                for tool_msg in event.tool_results:
+
+                case ToolExecEnd():
+                    _hooks.on_tool_end(
+                        run_id=run_id,
+                        turn_index=turn_count,
+                        call_id=event.call_id,
+                        tool_name=event.tool_name,
+                        result=event.result,
+                        duration_ms=event.duration_ms,
+                        is_error=event.is_error,
+                    )
+
+                case TurnEnd():
+                    assistant_msg = event.message
+
+                    # LLM end hook
+                    _hooks.on_llm_end(
+                        run_id=run_id,
+                        turn_index=turn_count,
+                        message=event.message,
+                        duration_ms=event.llm_duration_ms,
+                    )
+
+                    # Record in trace
                     state.trace.append(
-                        TraceEntry.tool_result(
-                            tool_msg,
+                        TraceEntry.assistant(
+                            event.message,
                             run_id=run_id,
                             turn_index=turn_count,
+                            usage=event.message.usage,
                         )
                     )
+                    for tool_msg in event.tool_results:
+                        state.trace.append(
+                            TraceEntry.tool_result(
+                                tool_msg,
+                                run_id=run_id,
+                                turn_index=turn_count,
+                            )
+                        )
 
-                # Accumulate total usage
-                if event.message.usage:
-                    total_usage = (
-                        total_usage + event.message.usage if total_usage else event.message.usage
+                    # Accumulate total usage
+                    if event.message.usage:
+                        total_usage = (
+                            total_usage + event.message.usage
+                            if total_usage
+                            else event.message.usage
+                        )
+
+                    # Turn end hook
+                    turn_duration_ms = (time.perf_counter() - turn_t0) * 1000
+                    _hooks.on_turn_end(
+                        run_id=run_id,
+                        turn_index=turn_count,
+                        message=event.message,
+                        tool_results=event.tool_results,
+                        llm_duration_ms=event.llm_duration_ms,
+                        duration_ms=turn_duration_ms,
                     )
 
-                # Turn end hook
-                turn_duration_ms = (time.perf_counter() - turn_t0) * 1000
-                _hooks.on_turn_end(
-                    run_id=run_id,
-                    turn_index=turn_count,
-                    message=event.message,
-                    tool_results=event.tool_results,
-                    llm_duration_ms=event.llm_duration_ms,
-                    duration_ms=turn_duration_ms,
-                )
+                case AgentError():
+                    logger.error("[%s] Agent error at turn %d: %s", run_id, turn_count, event.error)
+                    agent_duration_ms = (time.perf_counter() - agent_t0) * 1000
+                    _hooks.on_agent_end(
+                        run_id=run_id,
+                        turn_count=turn_count,
+                        duration_ms=agent_duration_ms,
+                        usage=total_usage,
+                    )
+                    yield event
+                    yield AgentEnd(messages=state.messages)
+                    return
 
-            elif isinstance(event, AgentError):
-                logger.error("[%s] Agent error at turn %d: %s", run_id, turn_count, event.error)
-                agent_duration_ms = (time.perf_counter() - agent_t0) * 1000
-                _hooks.on_agent_end(
-                    run_id=run_id,
-                    turn_count=turn_count,
-                    duration_ms=agent_duration_ms,
-                    usage=total_usage,
-                )
-                yield event
-                yield AgentEnd(messages=state.messages)
-                return
+                case _:
+                    pass
 
             yield event
 

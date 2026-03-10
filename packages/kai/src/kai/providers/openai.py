@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import uuid
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Callable, Sequence
 from typing import Any, Unpack, cast
 
 import httpx
@@ -248,7 +248,7 @@ def _convert_message(message: Message) -> ChatCompletionMessageParam:
         }
 
     if message.role == "user":
-        content = _convert_content_for_openai(message.content)
+        content = _convert_content(message.content, _chat_content_part)
         return cast(ChatCompletionMessageParam, {"role": "user", "content": content})
 
     result: dict[str, Any] = {"role": "assistant"}
@@ -276,25 +276,49 @@ def _convert_message(message: Message) -> ChatCompletionMessageParam:
     return result  # type: ignore[return-value]
 
 
-def _convert_content_for_openai(
+type _PartConverter = Callable[[ContentPart], dict[str, Any] | None]
+"""Strategy for converting a single ContentPart to a provider-specific dict."""
+
+
+def _convert_content(
     content: list[ContentPart],
+    convert_part: _PartConverter,
 ) -> str | list[dict[str, Any]]:
+    """Shared algorithm for turning a content list into a provider wire format.
+
+    Fast-path: a single TextPart is returned as a plain string.
+    Otherwise each part is converted via *convert_part*; parts that return
+    ``None`` are skipped (unsupported by the target API).
+    """
     if len(content) == 1 and isinstance(content[0], TextPart):
         return content[0].text
 
-    parts: list[dict[str, Any]] = []
-    for part in content:
-        if isinstance(part, TextPart):
-            parts.append({"type": "text", "text": part.text})
-        elif isinstance(part, ImagePart):
-            data_url = f"data:{part.mime_type};base64,{part.data}"
-            parts.append(
-                {
-                    "type": "image_url",
-                    "image_url": {"url": data_url},
-                }
-            )
+    parts = [converted for part in content if (converted := convert_part(part)) is not None]
     return parts if parts else ""
+
+
+def _chat_content_part(part: ContentPart) -> dict[str, Any] | None:
+    """Convert a ContentPart to OpenAI Chat Completions format."""
+    match part:
+        case TextPart():
+            return {"type": "text", "text": part.text}
+        case ImagePart():
+            data_url = f"data:{part.mime_type};base64,{part.data}"
+            return {"type": "image_url", "image_url": {"url": data_url}}
+        case _:
+            return None
+
+
+def _responses_content_part(part: ContentPart) -> dict[str, Any] | None:
+    """Convert a ContentPart to OpenAI Responses API format."""
+    match part:
+        case TextPart():
+            return {"type": "input_text", "text": part.text}
+        case ImagePart():
+            data_url = f"data:{part.mime_type};base64,{part.data}"
+            return {"type": "input_image", "image_url": data_url, "detail": "auto"}
+        case _:
+            return None
 
 
 _REASONING_FIELDS = ("reasoning_content", "reasoning", "reasoning_text")
@@ -403,7 +427,7 @@ def _convert_message_for_responses(message: Message) -> list[ResponseInputItemPa
         ]
 
     if message.role == "user":
-        content = _convert_content_for_responses(message.content)
+        content = _convert_content(message.content, _responses_content_part)
         return [{"role": "user", "content": content}]  # type: ignore[list-item]
 
     result: list[ResponseInputItemParam] = []
@@ -436,28 +460,6 @@ def _convert_message_for_responses(message: Message) -> list[ResponseInputItemPa
         )
 
     return result
-
-
-def _convert_content_for_responses(
-    content: list[ContentPart],
-) -> str | list[dict[str, Any]]:
-    if len(content) == 1 and isinstance(content[0], TextPart):
-        return content[0].text
-
-    parts: list[dict[str, Any]] = []
-    for part in content:
-        if isinstance(part, TextPart):
-            parts.append({"type": "input_text", "text": part.text})
-        elif isinstance(part, ImagePart):
-            data_url = f"data:{part.mime_type};base64,{part.data}"
-            parts.append(
-                {
-                    "type": "input_image",
-                    "image_url": data_url,
-                    "detail": "auto",
-                }
-            )
-    return parts if parts else ""
 
 
 async def _convert_responses_stream(
