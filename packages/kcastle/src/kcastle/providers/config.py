@@ -22,7 +22,7 @@ class ProviderConfig:
     api_key: str | None = None
     base_url: str | None = None
     extra_body: dict[str, object] | None = None
-    options: dict[str, object] = field(default_factory=dict)  # pyright: ignore[reportUnknownVariableType]
+    options: dict[str, object] = field(default_factory=dict[str, object])
 
     @property
     def name(self) -> str:
@@ -40,7 +40,7 @@ class ModelConfig:
     active: bool = True
     """Whether this model is available for use."""
 
-    options: dict[str, object] = field(default_factory=dict)  # pyright: ignore[reportUnknownVariableType]
+    options: dict[str, object] = field(default_factory=dict[str, object])
     """Provider-specific model options (``max_tokens``, ``reasoning``, etc.)."""
 
 
@@ -55,7 +55,7 @@ class ProviderEntry:
     config: ProviderConfig
     """Runtime provider config."""
 
-    models: list[ModelConfig] = field(default_factory=list)  # pyright: ignore[reportUnknownVariableType]
+    models: list[ModelConfig] = field(default_factory=list[ModelConfig])
     """Available models for this provider."""
 
     @property
