@@ -39,111 +39,41 @@ class ProviderRegistry:
         return factory(config)
 
 
-def _openai_completions_factory(config: ProviderConfig) -> ProviderBase:
-    kwargs: dict[str, object] = {
-        "model": config.model,
-    }
-    if config.api_key:
-        kwargs["api_key"] = config.api_key
-    if config.base_url:
-        kwargs["base_url"] = config.base_url
-    if config.extra_body:
-        kwargs["extra_body"] = config.extra_body
-    if config.options:
-        kwargs.update(config.options)
-    return OpenAIChatCompletions(**kwargs)  # type: ignore[arg-type]
+def _make_factory(cls: type[ProviderBase], *, include_extra_body: bool = False) -> ProviderFactory:
+    """Return a :data:`ProviderFactory` that instantiates *cls* from a :class:`ProviderConfig`.
 
+    Args:
+        cls: The concrete provider class to instantiate.
+        include_extra_body: When ``True``, forward ``config.extra_body`` to the
+            constructor.  Set this for OpenAI-chat-compatible providers that
+            accept an ``extra_body`` keyword argument.
+    """
 
-def _deepseek_openai_factory(config: ProviderConfig) -> ProviderBase:
-    kwargs: dict[str, object] = {
-        "model": config.model,
-    }
-    if config.api_key:
-        kwargs["api_key"] = config.api_key
-    if config.base_url:
-        kwargs["base_url"] = config.base_url
-    if config.extra_body:
-        kwargs["extra_body"] = config.extra_body
-    if config.options:
-        kwargs.update(config.options)
-    return DeepseekOpenAI(**kwargs)  # type: ignore[arg-type]
+    def factory(config: ProviderConfig) -> ProviderBase:
+        kwargs: dict[str, object] = {"model": config.model}
+        if config.api_key:
+            kwargs["api_key"] = config.api_key
+        if config.base_url:
+            kwargs["base_url"] = config.base_url
+        if include_extra_body and config.extra_body:
+            kwargs["extra_body"] = config.extra_body
+        if config.options:
+            kwargs.update(config.options)
+        return cls(**kwargs)  # type: ignore[arg-type]
 
-
-def _minimax_openai_factory(config: ProviderConfig) -> ProviderBase:
-    kwargs: dict[str, object] = {
-        "model": config.model,
-    }
-    if config.api_key:
-        kwargs["api_key"] = config.api_key
-    if config.base_url:
-        kwargs["base_url"] = config.base_url
-    if config.extra_body:
-        kwargs["extra_body"] = config.extra_body
-    if config.options:
-        kwargs.update(config.options)
-    return MinimaxOpenAI(**kwargs)  # type: ignore[arg-type]
-
-
-def _openai_responses_factory(config: ProviderConfig) -> ProviderBase:
-    kwargs: dict[str, object] = {
-        "model": config.model,
-    }
-    if config.api_key:
-        kwargs["api_key"] = config.api_key
-    if config.base_url:
-        kwargs["base_url"] = config.base_url
-    if config.options:
-        kwargs.update(config.options)
-    return OpenAIResponses(**kwargs)  # type: ignore[arg-type]
-
-
-def _anthropic_factory(config: ProviderConfig) -> ProviderBase:
-    kwargs: dict[str, object] = {
-        "model": config.model,
-    }
-    if config.api_key:
-        kwargs["api_key"] = config.api_key
-    if config.base_url:
-        kwargs["base_url"] = config.base_url
-    if config.options:
-        kwargs.update(config.options)
-    return AnthropicMessages(**kwargs)  # type: ignore[arg-type]
-
-
-def _deepseek_anthropic_factory(config: ProviderConfig) -> ProviderBase:
-    kwargs: dict[str, object] = {
-        "model": config.model,
-    }
-    if config.api_key:
-        kwargs["api_key"] = config.api_key
-    if config.base_url:
-        kwargs["base_url"] = config.base_url
-    if config.options:
-        kwargs.update(config.options)
-    return DeepseekAnthropic(**kwargs)  # type: ignore[arg-type]
-
-
-def _minimax_anthropic_factory(config: ProviderConfig) -> ProviderBase:
-    kwargs: dict[str, object] = {
-        "model": config.model,
-    }
-    if config.api_key:
-        kwargs["api_key"] = config.api_key
-    if config.base_url:
-        kwargs["base_url"] = config.base_url
-    if config.options:
-        kwargs.update(config.options)
-    return MinimaxAnthropic(**kwargs)  # type: ignore[arg-type]
+    return factory
 
 
 _DEFAULT_REGISTRY = ProviderRegistry()
-_DEFAULT_REGISTRY.register("openai", _openai_completions_factory)
-_DEFAULT_REGISTRY.register("openai-responses", _openai_responses_factory)
-_DEFAULT_REGISTRY.register("anthropic", _anthropic_factory)
-_DEFAULT_REGISTRY.register("deepseek-openai", _deepseek_openai_factory)
-_DEFAULT_REGISTRY.register("deepseek-anthropic", _deepseek_anthropic_factory)
-_DEFAULT_REGISTRY.register("minimax-openai", _minimax_openai_factory)
-_DEFAULT_REGISTRY.register("minimax-anthropic", _minimax_anthropic_factory)
+_DEFAULT_REGISTRY.register("openai", _make_factory(OpenAIChatCompletions, include_extra_body=True))
+_DEFAULT_REGISTRY.register("openai-responses", _make_factory(OpenAIResponses))
+_DEFAULT_REGISTRY.register("anthropic", _make_factory(AnthropicMessages))
+_DEFAULT_REGISTRY.register(
+    "deepseek-openai", _make_factory(DeepseekOpenAI, include_extra_body=True)
+)
+_DEFAULT_REGISTRY.register("deepseek-anthropic", _make_factory(DeepseekAnthropic))
+_DEFAULT_REGISTRY.register("minimax-openai", _make_factory(MinimaxOpenAI, include_extra_body=True))
+_DEFAULT_REGISTRY.register("minimax-anthropic", _make_factory(MinimaxAnthropic))
 
 
 def create_provider(
