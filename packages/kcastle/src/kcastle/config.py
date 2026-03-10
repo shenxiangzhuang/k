@@ -49,7 +49,7 @@ class ChannelConfig:
     """Configuration for a single channel."""
 
     enabled: bool = True
-    options: dict[str, object] = field(default_factory=dict)  # pyright: ignore[reportUnknownVariableType]
+    options: dict[str, object] = field(default_factory=dict[str, object])
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,7 +65,7 @@ class CastleConfig:
     skills_dir: Path
     """User-level skills directory."""
 
-    providers: dict[str, ProviderEntry] = field(default_factory=dict)  # pyright: ignore[reportUnknownVariableType]
+    providers: dict[str, ProviderEntry] = field(default_factory=dict[str, ProviderEntry])
     """Configured providers keyed by name."""
 
     default_provider: str = ""

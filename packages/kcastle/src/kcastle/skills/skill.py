@@ -40,7 +40,7 @@ class Skill:
     path: Path
     """Absolute path to the skill directory."""
 
-    tags: list[str] = field(default_factory=list)  # pyright: ignore[reportUnknownVariableType]
+    tags: list[str] = field(default_factory=list[str])
     """Optional searchable tags."""
 
     instructions: str = ""
