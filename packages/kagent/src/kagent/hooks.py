@@ -32,7 +32,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from kai import Message, ToolResult
+from kai import Context, Message, ToolResult
 from kai.types.usage import TokenUsage
 
 logger = logging.getLogger("kagent.hooks")
@@ -86,7 +86,7 @@ class Hooks:
     ) -> None:
         """Called at the end of each turn."""
 
-    def on_llm_start(self, *, run_id: str, turn_index: int) -> None:
+    def on_llm_start(self, *, run_id: str, turn_index: int, context: Context) -> None:
         """Called when the LLM streaming call starts (within a turn)."""
 
     def on_llm_end(
@@ -202,7 +202,7 @@ class LoggingHooks(Hooks):
             tools_info,
         )
 
-    def on_llm_start(self, *, run_id: str, turn_index: int) -> None:
+    def on_llm_start(self, *, run_id: str, turn_index: int, context: Context) -> None:
         logger.debug("[%s] Turn %d LLM start", run_id, turn_index)
 
     def on_llm_end(
@@ -315,9 +315,9 @@ class MultiHooks(Hooks):
                 duration_ms=duration_ms,
             )
 
-    def on_llm_start(self, *, run_id: str, turn_index: int) -> None:
+    def on_llm_start(self, *, run_id: str, turn_index: int, context: Context) -> None:
         for h in self._hooks:
-            h.on_llm_start(run_id=run_id, turn_index=turn_index)
+            h.on_llm_start(run_id=run_id, turn_index=turn_index, context=context)
 
     def on_llm_end(
         self,

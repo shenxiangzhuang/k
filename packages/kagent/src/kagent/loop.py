@@ -131,7 +131,7 @@ async def agent_loop(
 
         turn_t0 = time.perf_counter()
         _hooks.on_turn_start(run_id=run_id, turn_index=turn_count)
-        _hooks.on_llm_start(run_id=run_id, turn_index=turn_count)
+        _hooks.on_llm_start(run_id=run_id, turn_index=turn_count, context=context)
 
         # Delegate to agent_step — all LLM streaming + tool execution happens there
         assistant_msg: Message | None = None

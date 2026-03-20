@@ -35,7 +35,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from kai import Message, ToolResult
+from kai import Context, Message, ToolResult
 from kai.types.usage import TokenUsage
 
 from kagent.hooks import Hooks
@@ -136,6 +136,10 @@ class OTelHooks(Hooks):
         usage: TokenUsage | None,
     ) -> None:
         self._run_genai.pop(run_id, None)
+
+        # Close any dangling LLM/turn spans left by AgentError.
+        self._close_dangling_spans(run_id)
+
         span = self._agent_spans.pop(run_id, None)
         if span is None:
             return
@@ -146,6 +150,25 @@ class OTelHooks(Hooks):
             span.set_attribute("agent.usage.output_tokens", usage.output_tokens)
             span.set_attribute("agent.usage.total_tokens", usage.total_tokens)
         span.end()
+
+    def _close_dangling_spans(self, run_id: str) -> None:
+        """Close any LLM or turn spans left open by an error path."""
+        prefix = f"{run_id}:"
+        for key in [k for k in self._llm_spans if k.startswith(prefix)]:
+            span = self._llm_spans.pop(key)
+            span.set_status(self._otel_trace.StatusCode.ERROR, "Agent terminated")
+            span.end()
+        for key in [k for k in self._tool_spans if k.startswith(prefix)]:
+            span = self._tool_spans.pop(key)
+            span.set_status(self._otel_trace.StatusCode.ERROR, "Agent terminated")
+            span.end()
+        self._turn_tools.pop(
+            next((k for k in self._turn_tools if k.startswith(prefix)), ""), None
+        )
+        for key in [k for k in self._turn_spans if k.startswith(prefix)]:
+            span = self._turn_spans.pop(key)
+            span.set_status(self._otel_trace.StatusCode.ERROR, "Agent terminated")
+            span.end()
 
     # -- turn lifecycle ---------------------------------------------------
 
@@ -189,7 +212,7 @@ class OTelHooks(Hooks):
 
     # -- LLM call ---------------------------------------------------------
 
-    def on_llm_start(self, *, run_id: str, turn_index: int) -> None:
+    def on_llm_start(self, *, run_id: str, turn_index: int, context: Context) -> None:
         genai = self._run_genai.get(run_id, {})
         model = genai.get("gen_ai.request.model", "")
         # OTel GenAI convention: span name = "{operation} {model}"
@@ -197,16 +220,32 @@ class OTelHooks(Hooks):
 
         key = self._turn_key(run_id, turn_index)
         parent = self._turn_spans.get(key)
-        span = self._start_child_span(
+        otel_ctx = self._otel_trace.set_span_in_context(parent) if parent else None
+        span = self._tracer.start_span(
             span_name,
-            parent,
-            {
+            context=otel_ctx,
+            kind=self._otel_trace.SpanKind.CLIENT,
+            attributes={
                 **genai,
                 "gen_ai.operation.name": "chat",
                 "agent.run_id": run_id,
                 "agent.turn_index": turn_index,
             },
         )
+
+        # Record input messages as span events per OTel GenAI conventions.
+        if self._record_inputs:
+            if context.system:
+                span.add_event("gen_ai.system.message", {"gen_ai.system": context.system})
+            for msg in context.messages:
+                text = msg.extract_text()
+                if not text:
+                    continue
+                if msg.role == "user":
+                    span.add_event("gen_ai.user.message", {"content": text})
+                elif msg.role == "assistant":
+                    span.add_event("gen_ai.assistant.message", {"content": text})
+
         self._llm_spans[key] = span
 
     def on_llm_end(
@@ -227,6 +266,13 @@ class OTelHooks(Hooks):
         if message.usage:
             span.set_attribute("gen_ai.usage.input_tokens", message.usage.input_tokens)
             span.set_attribute("gen_ai.usage.output_tokens", message.usage.output_tokens)
+
+        # Record assistant output as span event.
+        if self._record_outputs:
+            text = message.extract_text()
+            if text:
+                span.add_event("gen_ai.assistant.message", {"content": text})
+
         span.end()
 
     # -- tool call --------------------------------------------------------
