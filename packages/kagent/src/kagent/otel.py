@@ -17,11 +17,11 @@ Usage::
 
 Span hierarchy::
 
-    agent.run
+    invoke_agent
     +-- agent.turn: read_file, run_bash
     |   +-- chat deepseek-reasoner
-    |   +-- agent.tool.read_file
-    |   +-- agent.tool.run_bash
+    |   +-- execute_tool read_file
+    |   +-- execute_tool run_bash
     +-- agent.turn (stop)
     |   +-- chat deepseek-reasoner
     +-- ...
@@ -101,6 +101,8 @@ class OTelHooks(Hooks):
         self._run_genai: dict[str, dict[str, str]] = {}
         # Per-turn tool names collected during the turn for span naming.
         self._turn_tools: dict[str, list[str]] = {}
+        # Last finish reason per run (for invoke_agent span).
+        self._run_finish_reason: dict[str, str] = {}
 
     @staticmethod
     def _turn_key(run_id: str, turn_index: int) -> str:
@@ -119,11 +121,18 @@ class OTelHooks(Hooks):
     def on_agent_start(self, *, run_id: str, model: str, provider: str) -> None:
         self._run_genai[run_id] = {
             "gen_ai.system": provider,
+            "gen_ai.provider.name": provider,
             "gen_ai.request.model": model,
         }
         span = self._tracer.start_span(
-            "agent.run",
-            attributes={"agent.run_id": run_id},
+            "invoke_agent",
+            kind=self._otel_trace.SpanKind.INTERNAL,
+            attributes={
+                "gen_ai.operation.name": "invoke_agent",
+                "gen_ai.provider.name": provider,
+                "gen_ai.request.model": model,
+                "agent.run_id": run_id,
+            },
         )
         self._agent_spans[run_id] = span
 
@@ -145,10 +154,12 @@ class OTelHooks(Hooks):
             return
         span.set_attribute("agent.turn_count", turn_count)
         span.set_attribute("agent.duration_ms", duration_ms)
+        finish_reason = self._run_finish_reason.pop(run_id, None)
+        if finish_reason:
+            span.set_attribute("gen_ai.response.finish_reasons", [finish_reason])
         if usage:
-            span.set_attribute("agent.usage.input_tokens", usage.input_tokens)
-            span.set_attribute("agent.usage.output_tokens", usage.output_tokens)
-            span.set_attribute("agent.usage.total_tokens", usage.total_tokens)
+            span.set_attribute("gen_ai.usage.input_tokens", usage.input_tokens)
+            span.set_attribute("gen_ai.usage.output_tokens", usage.output_tokens)
         span.end()
 
     def _close_dangling_spans(self, run_id: str) -> None:
@@ -156,10 +167,12 @@ class OTelHooks(Hooks):
         prefix = f"{run_id}:"
         for key in [k for k in self._llm_spans if k.startswith(prefix)]:
             span = self._llm_spans.pop(key)
+            span.set_attribute("error.type", "AgentError")
             span.set_status(self._otel_trace.StatusCode.ERROR, "Agent terminated")
             span.end()
         for key in [k for k in self._tool_spans if k.startswith(prefix)]:
             span = self._tool_spans.pop(key)
+            span.set_attribute("error.type", "AgentError")
             span.set_status(self._otel_trace.StatusCode.ERROR, "Agent terminated")
             span.end()
         self._turn_tools.pop(
@@ -167,6 +180,7 @@ class OTelHooks(Hooks):
         )
         for key in [k for k in self._turn_spans if k.startswith(prefix)]:
             span = self._turn_spans.pop(key)
+            span.set_attribute("error.type", "AgentError")
             span.set_status(self._otel_trace.StatusCode.ERROR, "Agent terminated")
             span.end()
 
@@ -263,6 +277,7 @@ class OTelHooks(Hooks):
         span.set_attribute("gen_ai.client.operation.duration_ms", duration_ms)
         if message.stop_reason:
             span.set_attribute("gen_ai.response.finish_reasons", [message.stop_reason])
+            self._run_finish_reason[run_id] = message.stop_reason
         if message.usage:
             span.set_attribute("gen_ai.usage.input_tokens", message.usage.input_tokens)
             span.set_attribute("gen_ai.usage.output_tokens", message.usage.output_tokens)
@@ -294,16 +309,18 @@ class OTelHooks(Hooks):
 
         parent = self._turn_spans.get(turn_key)
         attrs: dict[str, Any] = {
+            "gen_ai.operation.name": "execute_tool",
+            "gen_ai.tool.name": tool_name,
+            "gen_ai.tool.call.id": call_id,
+            "gen_ai.tool.type": "function",
             "agent.run_id": run_id,
             "agent.turn_index": turn_index,
-            "tool.call_id": call_id,
-            "tool.name": tool_name,
         }
         if self._record_inputs:
             args_str = json.dumps(arguments, default=str)
             if len(args_str) <= 4096:
-                attrs["tool.arguments"] = args_str
-        span = self._start_child_span(f"agent.tool.{tool_name}", parent, attrs)
+                attrs["gen_ai.tool.call.arguments"] = args_str
+        span = self._start_child_span(f"execute_tool {tool_name}", parent, attrs)
         self._tool_spans[self._tool_key(run_id, turn_index, call_id)] = span
 
     def on_tool_end(
@@ -321,12 +338,12 @@ class OTelHooks(Hooks):
         span = self._tool_spans.pop(tool_key, None)
         if span is None:
             return
-        span.set_attribute("tool.duration_ms", duration_ms)
-        span.set_attribute("tool.is_error", is_error)
+        span.set_attribute("gen_ai.tool.duration_ms", duration_ms)
         if self._record_outputs:
             output = result.output
             if len(output) <= 4096:
-                span.set_attribute("tool.result.output", output)
+                span.set_attribute("gen_ai.tool.call.result", output)
         if is_error:
+            span.set_attribute("error.type", "ToolError")
             span.set_status(self._otel_trace.StatusCode.ERROR, result.output[:256])
         span.end()
