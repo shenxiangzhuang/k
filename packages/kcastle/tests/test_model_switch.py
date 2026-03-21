@@ -182,7 +182,7 @@ def test_build_agent_hooks_creates_otel_hooks_when_endpoint_set(
 def test_configure_otel_returns_none_when_no_endpoint(tmp_path: Path) -> None:
     config = _build_config(tmp_path)
 
-    assert Castle._configure_otel(config) is None
+    assert Castle._configure_otel(config) == (None, None)
 
 
 def test_configure_otel_sets_up_provider(
@@ -214,7 +214,8 @@ def test_configure_otel_sets_up_provider(
         def shutdown(self) -> None:
             captured["shutdown"] = True
 
-    monkeypatch.setattr("kcastle.otel._create_exporter", FakeExporter)
+    monkeypatch.setattr("kcastle.otel._create_span_exporter", FakeExporter)
+    monkeypatch.setattr("kcastle.otel._create_log_exporter", FakeExporter)
     monkeypatch.setattr("kcastle.otel.BatchSpanProcessor", FakeBatchSpanProcessor)
     monkeypatch.setattr("kcastle.otel.TracerProvider", FakeProvider)
     monkeypatch.setattr(
@@ -225,8 +226,13 @@ def test_configure_otel_sets_up_provider(
         "kcastle.otel.opentelemetry.trace.set_tracer_provider",
         lambda provider: captured.setdefault("set_provider", provider),
     )
+    # Block logger provider imports so configure_otel falls through to except ImportError.
+    import sys
 
-    provider = Castle._configure_otel(config)
+    monkeypatch.setitem(sys.modules, "opentelemetry._logs", None)
+
+    provider, log_provider = Castle._configure_otel(config)
 
     assert provider is captured["provider"]
+    assert log_provider is None
     assert captured["resource"] == {"service.name": "kcastle"}

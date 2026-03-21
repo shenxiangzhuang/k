@@ -68,6 +68,7 @@ class Castle:
         system_prompt: str,
         skill_tools: list[Tool],
         otel_provider: Any | None = None,
+        otel_log_provider: Any | None = None,
     ) -> None:
         self._config = config
         self._session_manager = session_manager
@@ -77,6 +78,7 @@ class Castle:
         self._system_prompt = system_prompt
         self._skill_tools = skill_tools
         self._otel_provider = otel_provider
+        self._otel_log_provider = otel_log_provider
 
     @property
     def config(self) -> CastleConfig:
@@ -166,7 +168,7 @@ class Castle:
             continue_latest=continue_latest,
             daemon=daemon,
         )
-        otel_provider = cls._configure_otel(config)
+        otel_provider, otel_log_provider = cls._configure_otel(config)
         hooks = cls._build_agent_hooks(config)
 
         def agent_factory(trace: Trace) -> Agent:
@@ -194,6 +196,7 @@ class Castle:
             system_prompt=system_prompt,
             skill_tools=skill_tools,
             otel_provider=otel_provider,
+            otel_log_provider=otel_log_provider,
         )
 
     @staticmethod
@@ -243,19 +246,19 @@ class Castle:
         from kagent.otel import OTelHooks
 
         logger.info("OpenTelemetry hooks enabled")
-        return OTelHooks()
+        return OTelHooks(record_inputs=True, record_outputs=True)
 
     @staticmethod
-    def _configure_otel(config: CastleConfig) -> Any | None:
+    def _configure_otel(config: CastleConfig) -> tuple[Any, Any]:
         """Configure OTel exporter/provider for kcastle."""
         if not config.otel_endpoint:
-            return None
+            return None, None
 
         from kcastle.otel import configure_otel
 
-        provider = configure_otel()
+        tracer_provider, log_provider = configure_otel()
         logger.info("OpenTelemetry exporter configured: %s", config.otel_endpoint)
-        return provider
+        return tracer_provider, log_provider
 
     async def run(self) -> None:
         """Start all channels and wait until shutdown."""
@@ -297,6 +300,8 @@ class Castle:
 
         if self._otel_provider is not None:
             self._otel_provider.shutdown()
+        if self._otel_log_provider is not None:
+            self._otel_log_provider.shutdown()
 
         logger.info("Castle shut down")
 
