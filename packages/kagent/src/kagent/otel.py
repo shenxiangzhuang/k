@@ -198,8 +198,6 @@ class OTelHooks(Hooks):
         tools: list[Tool] | None = None,
     ) -> None:
         self._run_genai[run_id] = {
-            # TODO: gen_ai.system is deprecated; keep for TMA1 compat only.
-            "gen_ai.system": provider,
             "gen_ai.provider.name": provider,
             "gen_ai.request.model": model,
         }
