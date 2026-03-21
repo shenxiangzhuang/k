@@ -177,7 +177,6 @@ def _resolve_default_provider_name(provider_value: str) -> str:
     return provider_name.lower() if provider_name else ""
 
 
-
 def _parse_channel(
     data: dict[str, Any],
     channel: str,

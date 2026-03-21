@@ -166,7 +166,7 @@ def test_switch_model_persists_across_resume(
 def test_build_agent_hooks_returns_none_when_no_endpoint(tmp_path: Path) -> None:
     config = _build_config(tmp_path)
 
-    assert Castle._build_agent_hooks(config) is None
+    assert Castle._build_agent_hooks(config) is None  # pyright: ignore[reportPrivateUsage]
 
 
 def test_build_agent_hooks_creates_otel_hooks_when_endpoint_set(
@@ -174,7 +174,7 @@ def test_build_agent_hooks_creates_otel_hooks_when_endpoint_set(
 ) -> None:
     config = replace(_build_config(tmp_path), otel_endpoint="http://localhost:4317")
 
-    hooks = Castle._build_agent_hooks(config)
+    hooks = Castle._build_agent_hooks(config)  # pyright: ignore[reportPrivateUsage]
 
     assert isinstance(hooks, OTelHooks)
 
@@ -182,7 +182,7 @@ def test_build_agent_hooks_creates_otel_hooks_when_endpoint_set(
 def test_configure_otel_returns_none_when_no_endpoint(tmp_path: Path) -> None:
     config = _build_config(tmp_path)
 
-    assert Castle._configure_otel(config) == (None, None)
+    assert Castle._configure_otel(config) == (None, None)  # pyright: ignore[reportPrivateUsage]
 
 
 def test_configure_otel_sets_up_provider(
@@ -218,20 +218,28 @@ def test_configure_otel_sets_up_provider(
     monkeypatch.setattr("kcastle.otel._create_log_exporter", FakeExporter)
     monkeypatch.setattr("kcastle.otel.BatchSpanProcessor", FakeBatchSpanProcessor)
     monkeypatch.setattr("kcastle.otel.TracerProvider", FakeProvider)
+
+    def _fake_resource_create(attrs: dict[str, str]) -> dict[str, str]:
+        return attrs
+
     monkeypatch.setattr(
         "kcastle.otel.Resource.create",
-        staticmethod(lambda attrs: attrs),
+        staticmethod(_fake_resource_create),
     )
+
+    def _fake_set_provider(provider: object) -> object:
+        return captured.setdefault("set_provider", provider)
+
     monkeypatch.setattr(
         "kcastle.otel.opentelemetry.trace.set_tracer_provider",
-        lambda provider: captured.setdefault("set_provider", provider),
+        _fake_set_provider,
     )
     # Block logger provider imports so configure_otel falls through to except ImportError.
     import sys
 
     monkeypatch.setitem(sys.modules, "opentelemetry._logs", None)
 
-    provider, log_provider = Castle._configure_otel(config)
+    provider, log_provider = Castle._configure_otel(config)  # pyright: ignore[reportPrivateUsage]
 
     assert provider is captured["provider"]
     assert log_provider is None

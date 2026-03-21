@@ -252,9 +252,7 @@ class OTelHooks(Hooks):
             span.set_attribute("gen_ai.usage.input_tokens", usage.input_tokens)
             span.set_attribute("gen_ai.usage.output_tokens", usage.output_tokens)
             if usage.cache_read_tokens:
-                span.set_attribute(
-                    "gen_ai.usage.cache_read.input_tokens", usage.cache_read_tokens
-                )
+                span.set_attribute("gen_ai.usage.cache_read.input_tokens", usage.cache_read_tokens)
             if usage.cache_write_tokens:
                 span.set_attribute(
                     "gen_ai.usage.cache_creation.input_tokens", usage.cache_write_tokens
@@ -278,9 +276,7 @@ class OTelHooks(Hooks):
             span.set_attribute("error.type", "AgentError")
             span.set_status(self._otel_trace.StatusCode.ERROR, "Agent terminated")
             span.end()
-        self._turn_tools.pop(
-            next((k for k in self._turn_tools if k.startswith(prefix)), ""), None
-        )
+        self._turn_tools.pop(next((k for k in self._turn_tools if k.startswith(prefix)), ""), None)
         for key in [k for k in self._turn_spans if k.startswith(prefix)]:
             span = self._turn_spans.pop(key)
             span.set_attribute("error.type", "AgentError")
